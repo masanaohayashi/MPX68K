@@ -124,6 +124,9 @@ The project includes a dependency on the c68k CPU emulator which is built automa
 
 ### macOS Menu Reference
 
+#### MPX68K Menu
+- **MIDI & Audio Unit…**: Select CoreMIDI OUT-A, RS-232C MIDI OUT-B, and an optional Audio Unit instrument. The Audio Unit panel also provides its output gain and opens the instrument's custom UI.
+
 #### FDD Menu
 - **Open Drive 0…** / **Open Drive 1…**: Insert a floppy image
 - **Eject Drive 0** / **Eject Drive 1**: Eject the inserted floppy
@@ -158,6 +161,8 @@ The project includes a dependency on the c68k CPU emulator which is built automa
 - **Disk State Management → Auto-Mount Mode**: Disabled / Restore Last Session / Smart Load / Manual Selection
 - **Disk State Management → Save Current State / Clear Saved State / Show State Information**
 - **JoyportU Settings → Disabled / Notify Mode / Command Mode**
+
+The MIDI & Audio Unit panel keeps the existing emulator audio active while optionally hosting a macOS Music Device Audio Unit in parallel. CoreMIDI is OUT-A; RS-232C is OUT-B and uses a selected `/dev/cu.*` or `/dev/tty.*` device at MIDI's 31,250 baud, 8-N-1 framing. A physical RS-232C-to-MIDI electrical converter is required; a DIN MIDI cable must not be connected directly to the serial port. MIDI IN is not connected yet.
 
 #### Joycard Input
 - **Arrow Keys** or **WASD**: 8-direction movement

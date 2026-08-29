@@ -127,6 +127,18 @@ class GameScene: SKScene {
     private let midiDelayDefaultsKey = "MIDIOutputDelayMs"
     private let midiDefaultDelayMs: Double = 300.0
     private var midiOutputDelayMs: Double = 0.0
+
+    #if os(macOS)
+    private let midiCoreEnabledDefaultsKey = "MIDIOutput.CoreMIDI.Enabled"
+    private let midiCoreUniqueIDDefaultsKey = "MIDIOutput.CoreMIDI.UniqueID"
+    private let midiRS232CEnabledDefaultsKey = "MIDIOutput.RS232C.Enabled"
+    private let midiRS232CPathDefaultsKey = "MIDIOutput.RS232C.DevicePath"
+    private let audioUnitEnabledDefaultsKey = "AudioUnitOutput.Enabled"
+    private let audioUnitIDDefaultsKey = "AudioUnitOutput.ComponentID"
+    private let audioUnitGainDefaultsKey = "AudioUnitOutput.GainDB"
+    private var midiOutputSettings = MPX68KMIDIOutputSettings()
+    private var audioUnitSettings = MPX68KAudioUnitSettings()
+    #endif
     
     private var devices: [X68Device] = []
     var fileSystem: FileSystem?
@@ -160,6 +172,8 @@ class GameScene: SKScene {
     var crtOverlay: CRTOverlay?
     #if os(macOS)
     var crtSettingsWindowController: AnyObject?  // NSWindowController for SwiftUI CRT settings
+    var midiAndAudioSettingsWindowController: AnyObject?
+    var audioUnitEditorWindowController: AnyObject?
     #endif
     // Superimpose (background video)
     private let superManager = SuperimposeManager()
@@ -850,6 +864,10 @@ class GameScene: SKScene {
     
     func setUpScene() {
         settings()
+
+        #if os(macOS)
+        loadMIDIAndAudioUnitSettings()
+        #endif
         
         self.fileSystem = FileSystem()
         self.fileSystem?.gameScene = self  // Set reference for timer management
@@ -1055,8 +1073,21 @@ class GameScene: SKScene {
         if view?.preferredFramesPerSecond == 120 && self.vsync == false {
             // sample *= 2
         }
-        self.audioStream = AudioStream(samplingrate: sample)
-        self.audioStream?.play()
+        let stream = AudioStream(samplingrate: sample)
+        self.audioStream = stream
+        #if os(macOS)
+        midiController.setAudioUnitSender { [weak stream] event in
+            stream?.sendAudioUnitMIDI(event)
+        }
+        stream.applyAudioUnitSettings(audioUnitSettings) { error in
+            if let error = error {
+                warningLog("Audio Unit startup: \(error)", category: .audio)
+                self.audioUnitSettings.enabled = false
+                self.userDefaults.set(false, forKey: self.audioUnitEnabledDefaultsKey)
+            }
+        }
+        #endif
+        stream.play()
 
         self.mouseSprite = self.childNode(withName: "//Mouse") as? SKSpriteNode
 
@@ -1683,6 +1714,150 @@ class GameScene: SKScene {
             setMIDIOutputDelayMs(midiDefaultDelayMs, persist: false)
         }
     }
+
+    #if os(macOS)
+
+    private func loadMIDIAndAudioUnitSettings() {
+        let defaults = userDefaults
+        let hasSavedMIDISettings = defaults.object(forKey: midiCoreEnabledDefaultsKey) != nil ||
+            defaults.object(forKey: midiRS232CEnabledDefaultsKey) != nil
+
+        let midiSettings: MPX68KMIDIOutputSettings
+        if hasSavedMIDISettings {
+            let uniqueID = (defaults.object(forKey: midiCoreUniqueIDDefaultsKey) as? NSNumber)?.int32Value
+            midiSettings = MPX68KMIDIOutputSettings(
+                coreMIDIEnabled: defaults.object(forKey: midiCoreEnabledDefaultsKey) == nil
+                    ? true
+                    : defaults.bool(forKey: midiCoreEnabledDefaultsKey),
+                coreMIDIUniqueID: uniqueID,
+                rs232cEnabled: defaults.bool(forKey: midiRS232CEnabledDefaultsKey),
+                rs232cDevicePath: defaults.string(forKey: midiRS232CPathDefaultsKey)
+            )
+        } else {
+            // Existing versions sent to the first available CoreMIDI
+            // destination. Preserve that behavior on first launch, while
+            // making the destination explicit for subsequent launches.
+            let destinations = midiController.refreshMIDIDestinations()
+            midiSettings = MPX68KMIDIOutputSettings(
+                coreMIDIEnabled: !destinations.isEmpty,
+                coreMIDIUniqueID: destinations.first?.id,
+                rs232cEnabled: false,
+                rs232cDevicePath: nil
+            )
+        }
+        midiOutputSettings = midiSettings
+        if let error = midiController.configureOutputs(midiSettings) {
+            warningLog("MIDI output startup: \(error)", category: .network)
+        }
+
+        let gain = (defaults.object(forKey: audioUnitGainDefaultsKey) as? NSNumber)?.doubleValue ?? 0.0
+        audioUnitSettings = MPX68KAudioUnitSettings(
+            enabled: defaults.bool(forKey: audioUnitEnabledDefaultsKey),
+            componentID: defaults.string(forKey: audioUnitIDDefaultsKey),
+            gainDB: gain
+        )
+    }
+
+    func currentMIDIOutputSettings() -> MPX68KMIDIOutputSettings {
+        midiOutputSettings
+    }
+
+    func currentAudioUnitSettings() -> MPX68KAudioUnitSettings {
+        audioUnitSettings
+    }
+
+    func availableMIDIDestinations() -> [MPX68KMIDIDestination] {
+        midiController.refreshMIDIDestinations()
+    }
+
+    func availableRS232CDevices() -> [MPX68KRS232CDevice] {
+        MIDIController.availableRS232CDevices()
+    }
+
+    func availableAudioUnits() -> [MPX68KAudioUnitDescriptor] {
+        AudioStream.availableAudioUnits()
+    }
+
+    @discardableResult
+    func applyMIDIOutputSettings(_ settings: MPX68KMIDIOutputSettings,
+                                 persist: Bool = true) -> String? {
+        midiOutputSettings = settings
+        let error = midiController.configureOutputs(settings)
+        if persist {
+            userDefaults.set(settings.coreMIDIEnabled, forKey: midiCoreEnabledDefaultsKey)
+            if let uniqueID = settings.coreMIDIUniqueID {
+                userDefaults.set(uniqueID, forKey: midiCoreUniqueIDDefaultsKey)
+            } else {
+                userDefaults.removeObject(forKey: midiCoreUniqueIDDefaultsKey)
+            }
+            userDefaults.set(settings.rs232cEnabled, forKey: midiRS232CEnabledDefaultsKey)
+            if let path = settings.rs232cDevicePath {
+                userDefaults.set(path, forKey: midiRS232CPathDefaultsKey)
+            } else {
+                userDefaults.removeObject(forKey: midiRS232CPathDefaultsKey)
+            }
+        }
+        if let error = error {
+            warningLog("MIDI output configuration: \(error)", category: .network)
+        }
+        return error
+    }
+
+    func applyAudioUnitSettings(_ settings: MPX68KAudioUnitSettings,
+                                persist: Bool = true,
+                                completion: @escaping (String?) -> Void = { _ in }) {
+        audioUnitSettings = MPX68KAudioUnitSettings(
+            enabled: settings.enabled,
+            componentID: settings.componentID,
+            gainDB: settings.gainDB
+        )
+        if persist {
+            userDefaults.set(audioUnitSettings.enabled, forKey: audioUnitEnabledDefaultsKey)
+            if let componentID = audioUnitSettings.componentID {
+                userDefaults.set(componentID, forKey: audioUnitIDDefaultsKey)
+            } else {
+                userDefaults.removeObject(forKey: audioUnitIDDefaultsKey)
+            }
+            userDefaults.set(audioUnitSettings.gainDB, forKey: audioUnitGainDefaultsKey)
+        }
+        guard let stream = audioStream else {
+            let error = "Audio stream is not ready"
+            if audioUnitSettings.enabled {
+                audioUnitSettings.enabled = false
+                if persist {
+                    userDefaults.set(false, forKey: audioUnitEnabledDefaultsKey)
+                }
+            }
+            completion(error)
+            return
+        }
+        stream.applyAudioUnitSettings(audioUnitSettings) { error in
+            if let error = error {
+                if self.audioUnitSettings.enabled {
+                    self.audioUnitSettings.enabled = false
+                    if persist {
+                        self.userDefaults.set(false, forKey: self.audioUnitEnabledDefaultsKey)
+                    }
+                }
+                warningLog("Audio Unit configuration: \(error)", category: .audio)
+            }
+            completion(error)
+        }
+    }
+
+    func showAudioUnitEditor(completion: @escaping (Result<NSViewController, Error>) -> Void) {
+        guard let stream = audioStream else {
+            completion(.failure(NSError(
+                domain: "MPX68K.AudioUnitHost",
+                code: 2,
+                userInfo: [NSLocalizedDescriptionKey: "Audio stream is not ready"]
+            )))
+            return
+        }
+        stream.showAudioUnitEditor(completion: completion)
+    }
+
+    #endif
     
     
     private func updateSpriteWithTexture(_ texture: SKTexture, size: CGSize) {

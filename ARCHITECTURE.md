@@ -205,6 +205,35 @@ graph TB
     style AVAudio fill:#e8f5e8
 ```
 
+## MIDI and Audio Unit Output Architecture
+
+```mermaid
+graph LR
+    subgraph "X68000 Emulation"
+        MIDI[MIDI events]
+        EmulatorAudio[Built-in FM/ADPCM audio]
+    end
+
+    Router[MIDIController output router]
+    CoreMIDI[CoreMIDI OUT-A]
+    Serial[Dedicated RS-232C transport OUT-B]
+    AUHost[Audio Unit host]
+    AUMixer[AU gain mixer]
+    AudioOutput[macOS audio output]
+
+    MIDI --> Router
+    Router --> CoreMIDI
+    Router --> Serial
+    Router --> AUHost
+    AUHost --> AUMixer
+    AUMixer --> AudioOutput
+    EmulatorAudio --> AudioOutput
+```
+
+On macOS, `MIDIController` sends each parsed MIDI event to the selected CoreMIDI destination and, independently, to the selected RS-232C device. The serial transport uses a dedicated file descriptor and asynchronous transmit queue configured for 31,250 baud, 8-N-1. MIDI IN is intentionally not connected yet.
+
+The optional Audio Unit is hosted by a separate `AVAudioEngine` in the current MVP. Its MIDI scheduler receives events immediately, while the existing physical MIDI output delay remains applied to OUT-A/OUT-B. The existing emulator `AudioQueue` remains active, so the AU output is parallel to the built-in emulator audio. Settings persist the selected Audio Unit, enabled state, and gain from -60 dB to 0 dB; the longer-term single post-mix graph and recording integration remains future work.
+
 ## Input System Architecture
 
 ```mermaid

@@ -2170,3 +2170,335 @@ extension CRTPreset {
         }
     }
 }
+
+// MARK: - MIDI and Audio Unit Settings
+
+private final class MPX68KGameSceneReference {
+    weak var scene: GameScene?
+
+    init(scene: GameScene) {
+        self.scene = scene
+    }
+}
+
+final class MIDIAndAudioSettingsWindowController: NSWindowController {
+    convenience init(gameScene: GameScene) {
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 640, height: 600),
+            styleMask: [.titled, .closable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        self.init(window: window)
+
+        window.title = "MIDI & Audio Unit Settings"
+        window.isMovableByWindowBackground = true
+        window.center()
+        window.setFrameAutosaveName("MIDIAndAudioSettingsWindow")
+
+        let reference = MPX68KGameSceneReference(scene: gameScene)
+        window.contentView = NSHostingView(
+            rootView: MIDIAndAudioSettingsPanel(sceneReference: reference)
+        )
+    }
+
+    func show() {
+        window?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+}
+
+final class AudioUnitEditorWindowController: NSWindowController {
+    convenience init(viewController: NSViewController, title: String) {
+        let fittingSize = viewController.view.fittingSize
+        let width = max(360.0, fittingSize.width)
+        let height = max(240.0, fittingSize.height)
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: width, height: height),
+            styleMask: [.titled, .closable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        self.init(window: window)
+
+        window.title = title
+        window.contentViewController = viewController
+        window.center()
+    }
+
+    override init(window: NSWindow?) {
+        super.init(window: window)
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+    }
+
+    func show() {
+        window?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+}
+
+private struct MIDIAndAudioSettingsPanel: View {
+    private let sceneReference: MPX68KGameSceneReference
+
+    @State private var useCoreMIDI: Bool
+    @State private var selectedCoreMIDIID: String
+    @State private var useRS232C: Bool
+    @State private var selectedRS232CPath: String
+    @State private var useAudioUnit: Bool
+    @State private var selectedAudioUnitID: String
+    @State private var audioUnitGainDB: Double
+    @State private var isApplyingAudioUnit: Bool
+    @State private var midiDestinations: [MPX68KMIDIDestination]
+    @State private var serialDevices: [MPX68KRS232CDevice]
+    @State private var audioUnits: [MPX68KAudioUnitDescriptor]
+    @State private var statusMessage = ""
+
+    init(sceneReference: MPX68KGameSceneReference) {
+        self.sceneReference = sceneReference
+
+        let midiSettings = sceneReference.scene?.currentMIDIOutputSettings()
+            ?? MPX68KMIDIOutputSettings()
+        let audioSettings = sceneReference.scene?.currentAudioUnitSettings()
+            ?? MPX68KAudioUnitSettings()
+        let destinations = sceneReference.scene?.availableMIDIDestinations() ?? []
+        let devices = sceneReference.scene?.availableRS232CDevices() ?? []
+        let units = sceneReference.scene?.availableAudioUnits() ?? []
+
+        _useCoreMIDI = State(initialValue: midiSettings.coreMIDIEnabled)
+        _selectedCoreMIDIID = State(
+            initialValue: midiSettings.coreMIDIUniqueID.map { String($0) } ?? ""
+        )
+        _useRS232C = State(initialValue: midiSettings.rs232cEnabled)
+        _selectedRS232CPath = State(initialValue: midiSettings.rs232cDevicePath ?? "")
+        _useAudioUnit = State(initialValue: audioSettings.enabled)
+        _selectedAudioUnitID = State(initialValue: audioSettings.componentID ?? "")
+        _audioUnitGainDB = State(initialValue: audioSettings.gainDB)
+        _isApplyingAudioUnit = State(initialValue: audioSettings.enabled)
+        _midiDestinations = State(initialValue: destinations)
+        _serialDevices = State(initialValue: devices)
+        _audioUnits = State(initialValue: units)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text("MIDI & Audio Unit")
+                    .font(.system(size: 20, weight: .semibold))
+                Spacer()
+                Button("Refresh") {
+                    refreshDevices()
+                }
+                Button {
+                    closeWindow()
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 20))
+                        .foregroundColor(.secondary)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 24)
+            .padding(.vertical, 18)
+
+            Divider()
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    midiOutputSection
+                    Divider()
+                    audioUnitSection
+
+                    if !statusMessage.isEmpty {
+                        Text(statusMessage)
+                            .font(.system(size: 12))
+                            .foregroundColor(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+                .padding(24)
+            }
+        }
+        .frame(width: 640, height: 600)
+        .onChange(of: useCoreMIDI) { _ in applyMIDISettings() }
+        .onChange(of: selectedCoreMIDIID) { _ in applyMIDISettings() }
+        .onChange(of: useRS232C) { _ in applyMIDISettings() }
+        .onChange(of: selectedRS232CPath) { _ in applyMIDISettings() }
+        .onChange(of: useAudioUnit) { _ in applyAudioUnitSettings() }
+        .onChange(of: selectedAudioUnitID) { _ in applyAudioUnitSettings() }
+        .onChange(of: audioUnitGainDB) { _ in applyAudioUnitSettings() }
+        .onAppear {
+            if useAudioUnit {
+                applyAudioUnitSettings()
+            }
+        }
+    }
+
+    private var midiOutputSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("MIDI OUTPUT")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(.secondary)
+
+            Toggle("CoreMIDI OUT-A", isOn: $useCoreMIDI)
+
+            Picker("Destination", selection: $selectedCoreMIDIID) {
+                Text("Not selected").tag("")
+                ForEach(midiDestinations) { destination in
+                    Text(destination.name).tag(String(destination.id))
+                }
+            }
+            .disabled(!useCoreMIDI || midiDestinations.isEmpty)
+
+            if midiDestinations.isEmpty {
+                Text("No CoreMIDI destinations are currently available.")
+                    .font(.system(size: 12))
+                    .foregroundColor(.secondary)
+            }
+
+            Toggle("RS-232C MIDI OUT-B", isOn: $useRS232C)
+
+            Picker("Device", selection: $selectedRS232CPath) {
+                Text("Not selected").tag("")
+                ForEach(serialDevices) { device in
+                    Text(device.displayName).tag(device.path)
+                }
+            }
+            .disabled(!useRS232C || serialDevices.isEmpty)
+
+            Text("Raw MIDI: 31,250 baud / 8 data bits / no parity / 1 stop bit")
+                .font(.system(size: 12))
+                .foregroundColor(.secondary)
+
+            Label(
+                "A physical RS-232C-to-MIDI electrical converter is required. Do not connect a MIDI DIN signal directly to a computer RS-232 port.",
+                systemImage: "exclamationmark.triangle"
+            )
+            .font(.system(size: 12))
+            .foregroundColor(.orange)
+        }
+    }
+
+    private var audioUnitSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("AUDIO UNIT")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(.secondary)
+
+            Toggle("Use Audio Unit", isOn: $useAudioUnit)
+
+            Picker("Instrument", selection: $selectedAudioUnitID) {
+                Text("Not selected").tag("")
+                ForEach(audioUnits) { audioUnit in
+                    Text(audioUnit.name).tag(audioUnit.id)
+                }
+            }
+            .disabled(!useAudioUnit || audioUnits.isEmpty)
+
+            if audioUnits.isEmpty {
+                Text("No MIDI-capable Audio Unit instruments were found.")
+                    .font(.system(size: 12))
+                    .foregroundColor(.secondary)
+            }
+
+            HStack(spacing: 12) {
+                Text("AU volume")
+                    .frame(width: 90, alignment: .leading)
+                Slider(value: $audioUnitGainDB, in: -60.0...0.0, step: 0.5)
+                Text(String(format: "%+.1f dB", audioUnitGainDB))
+                    .font(.system(size: 12, design: .monospaced))
+                    .frame(width: 70, alignment: .trailing)
+            }
+            .disabled(!useAudioUnit)
+
+            Button("Open Audio Unit UI") {
+                openAudioUnitEditor()
+            }
+            .disabled(!useAudioUnit || isApplyingAudioUnit || selectedAudioUnitID.isEmpty)
+
+            Text("The Audio Unit is an additional sound source; the emulator's built-in audio remains active.")
+                .font(.system(size: 12))
+                .foregroundColor(.secondary)
+        }
+    }
+
+    private func applyMIDISettings() {
+        guard let scene = sceneReference.scene else { return }
+        let uniqueID = Int32(selectedCoreMIDIID)
+        let settings = MPX68KMIDIOutputSettings(
+            coreMIDIEnabled: useCoreMIDI,
+            coreMIDIUniqueID: uniqueID,
+            rs232cEnabled: useRS232C,
+            rs232cDevicePath: selectedRS232CPath.isEmpty ? nil : selectedRS232CPath
+        )
+        if let error = scene.applyMIDIOutputSettings(settings) {
+            statusMessage = error
+        } else {
+            statusMessage = "MIDI output settings saved"
+        }
+    }
+
+    private func applyAudioUnitSettings() {
+        guard let scene = sceneReference.scene else { return }
+        let settings = MPX68KAudioUnitSettings(
+            enabled: useAudioUnit,
+            componentID: selectedAudioUnitID.isEmpty ? nil : selectedAudioUnitID,
+            gainDB: audioUnitGainDB
+        )
+        isApplyingAudioUnit = true
+        scene.applyAudioUnitSettings(settings) { error in
+            DispatchQueue.main.async {
+                isApplyingAudioUnit = false
+                if error != nil {
+                    useAudioUnit = false
+                }
+                statusMessage = error ?? "Audio Unit settings saved"
+            }
+        }
+    }
+
+    private func refreshDevices() {
+        guard let scene = sceneReference.scene else { return }
+        midiDestinations = scene.availableMIDIDestinations()
+        serialDevices = scene.availableRS232CDevices()
+        audioUnits = scene.availableAudioUnits()
+
+        if !midiDestinations.contains(where: { String($0.id) == selectedCoreMIDIID }) {
+            selectedCoreMIDIID = ""
+        }
+        if !serialDevices.contains(where: { $0.path == selectedRS232CPath }) {
+            selectedRS232CPath = ""
+        }
+        if !audioUnits.contains(where: { $0.id == selectedAudioUnitID }) {
+            selectedAudioUnitID = ""
+        }
+        statusMessage = "Device list refreshed"
+    }
+
+    private func openAudioUnitEditor() {
+        guard let scene = sceneReference.scene else { return }
+        scene.showAudioUnitEditor { result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let viewController):
+                    let name = audioUnits.first(where: { $0.id == selectedAudioUnitID })?.name
+                        ?? "Audio Unit"
+                    let windowController = AudioUnitEditorWindowController(
+                        viewController: viewController,
+                        title: name
+                    )
+                    scene.audioUnitEditorWindowController = windowController
+                    windowController.show()
+                case .failure(let error):
+                    statusMessage = error.localizedDescription
+                }
+            }
+        }
+    }
+
+    private func closeWindow() {
+        NSApp.keyWindow?.close()
+    }
+}

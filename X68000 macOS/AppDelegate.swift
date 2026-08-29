@@ -640,6 +640,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSMenu
         let quitItem = NSMenuItem(title: "Quit \(FileSystem.displayName)", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         appMenu.addItem(quitItem)
 
+        // MIDI OUT-A/OUT-B and Audio Unit routing are application-level
+        // settings, so install the panel in the rebuilt app menu as well as
+        // the legacy settings-menu path below.
+        addMIDIAndAudioSettingsMenuItem(to: appMenu)
+
         mainMenu.addItem(appMenuItem)
 
         // FDD Menu
@@ -1203,6 +1208,19 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSMenu
         windowController.show()
     }
 
+    @objc func showMIDIAndAudioSettings(_ sender: Any?) {
+        guard let scene = gameViewController?.gameScene else { return }
+
+        if let windowController = scene.midiAndAudioSettingsWindowController as? MIDIAndAudioSettingsWindowController {
+            windowController.window?.makeKeyAndOrderFront(nil)
+            return
+        }
+
+        let windowController = MIDIAndAudioSettingsWindowController(gameScene: scene)
+        scene.midiAndAudioSettingsWindowController = windowController
+        windowController.show()
+    }
+
     // MARK: - Machine Monitor
 
     private var monitorWindowController: MonitorWindowController?
@@ -1320,6 +1338,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSMenu
                     addAutoMountMenuItem(to: submenu)
                     addSerialMenuItem(to: submenu)
                     addJoyportUMenuItem(to: submenu)
+                    addMIDIAndAudioSettingsMenuItem(to: submenu)
                     return
                 }
             }
@@ -1332,7 +1351,37 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSMenu
             addAutoMountMenuItem(to: firstSubmenu)
             addSerialMenuItem(to: firstSubmenu)
             addJoyportUMenuItem(to: firstSubmenu)
+            addMIDIAndAudioSettingsMenuItem(to: firstSubmenu)
         }
+    }
+
+    private func addMIDIAndAudioSettingsMenuItem(to menu: NSMenu) {
+        let identifier = NSUserInterfaceItemIdentifier("Settings-midi-audio")
+        if menu.items.contains(where: { $0.identifier == identifier }) {
+            return
+        }
+
+        let item = NSMenuItem(
+            title: "MIDI & Audio Unit...",
+            action: #selector(showMIDIAndAudioSettings(_:)),
+            keyEquivalent: ""
+        )
+        item.target = self
+        item.identifier = identifier
+
+        var insertIndex = menu.items.count
+        for (index, menuItem) in menu.items.enumerated() {
+            if menuItem.keyEquivalent == "q" && menuItem.action == #selector(NSApplication.terminate(_:)) {
+                insertIndex = index
+                break
+            }
+        }
+
+        if insertIndex > 0 && !menu.items[insertIndex - 1].isSeparatorItem {
+            menu.insertItem(NSMenuItem.separator(), at: insertIndex)
+            insertIndex += 1
+        }
+        menu.insertItem(item, at: insertIndex)
     }
     
     private func addAutoMountMenuItem(to menu: NSMenu) {

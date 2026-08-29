@@ -99,6 +99,11 @@ class AudioStream {
 
 import Foundation
 import AudioToolbox
+#if os(macOS)
+import AVFoundation
+import AppKit
+import CoreAudioKit
+#endif
 
 func bridge<T : AnyObject>(_ obj : T) -> UnsafeRawPointer {
     return UnsafeRawPointer(Unmanaged.passUnretained(obj).toOpaque())
@@ -138,6 +143,10 @@ func outputCallback(_ data: UnsafeMutableRawPointer?, queue: AudioQueueRef, buff
 
 class AudioStream {
     static var recordingTap: ((UnsafeRawPointer, Int, Int) -> Void)?
+
+    #if os(macOS)
+    private let audioUnitHost = MPX68KAudioUnitHost()
+    #endif
 
     var dataFormat:     AudioStreamBasicDescription
     var queue:          AudioQueueRef? = nil
@@ -233,6 +242,9 @@ class AudioStream {
                 errorLog("Failed to start audio queue: \(result)", category: .audio)
             }
         }
+        #if os(macOS)
+        audioUnitHost.play()
+        #endif
     }
     
     func stop()
@@ -244,6 +256,9 @@ class AudioStream {
                 errorLog("Failed to stop audio queue: \(result)", category: .audio)
             }
         }
+        #if os(macOS)
+        audioUnitHost.stop()
+        #endif
     }
     
     func pause()
@@ -255,6 +270,9 @@ class AudioStream {
                 errorLog("Failed to pause audio queue: \(result)", category: .audio)
             }
         }
+        #if os(macOS)
+        audioUnitHost.pause()
+        #endif
     }
     func close()
     {
@@ -282,7 +300,300 @@ class AudioStream {
             
             self.queue = nil
         }
+        #if os(macOS)
+        audioUnitHost.close()
+        #endif
+    }
+
+    #if os(macOS)
+
+    static func availableAudioUnits() -> [MPX68KAudioUnitDescriptor] {
+        MPX68KAudioUnitHost.availableAudioUnits()
+    }
+
+    func applyAudioUnitSettings(_ settings: MPX68KAudioUnitSettings,
+                                completion: @escaping (String?) -> Void) {
+        audioUnitHost.apply(settings, completion: completion)
+    }
+
+    func sendAudioUnitMIDI(_ event: [UInt8]) {
+        audioUnitHost.sendMIDI(event)
+    }
+
+    func showAudioUnitEditor(completion: @escaping (Result<NSViewController, Error>) -> Void) {
+        audioUnitHost.showEditor(completion: completion)
+    }
+
+    #endif
+}
+
+#if os(macOS)
+
+private final class MPX68KAudioUnitHost {
+    private let engine = AVAudioEngine()
+    private let audioUnitMixer = AVAudioMixerNode()
+    private var audioUnit: AVAudioUnit?
+    private var midiScheduler: AUScheduleMIDIEventBlock?
+    private var currentDescriptor: MPX68KAudioUnitDescriptor?
+    private var loadingComponentID: String?
+    private var loadGeneration: UInt = 0
+    private var isEnabled = false
+    private var gainDB: Double = 0.0
+    private var isClosed = false
+
+    init() {
+        // Keep the AU path separate from the emulator's AudioQueue. The
+        // dedicated mixer gives the AU its own gain control while both paths
+        // remain audible through macOS's normal audio-device mixer.
+        engine.attach(audioUnitMixer)
+        engine.connect(audioUnitMixer, to: engine.mainMixerNode, format: nil)
+    }
+
+    deinit {
+        close()
+    }
+
+    static func availableAudioUnits() -> [MPX68KAudioUnitDescriptor] {
+        let description = AudioComponentDescription(
+            componentType: kAudioUnitType_MusicDevice,
+            componentSubType: 0,
+            componentManufacturer: 0,
+            componentFlags: 0,
+            componentFlagsMask: 0
+        )
+        let manager = AVAudioUnitComponentManager.shared()
+        return manager.components(matching: description)
+            .filter { $0.hasMIDIInput }
+            .map { component in
+                let componentDescription = component.audioComponentDescription
+                let manufacturer = component.manufacturerName.isEmpty
+                    ? ""
+                    : " (\(component.manufacturerName))"
+                return MPX68KAudioUnitDescriptor(
+                    componentType: componentDescription.componentType,
+                    componentSubType: componentDescription.componentSubType,
+                    componentManufacturer: componentDescription.componentManufacturer,
+                    componentFlags: componentDescription.componentFlags,
+                    componentFlagsMask: componentDescription.componentFlagsMask,
+                    name: "\(component.name)\(manufacturer)"
+                )
+            }
+            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
+
+    func apply(_ settings: MPX68KAudioUnitSettings,
+               completion: @escaping (String?) -> Void) {
+        guard !isClosed else {
+            completion("Audio Unit host is closed")
+            return
+        }
+
+        if !settings.enabled || currentDescriptor?.id != settings.componentID {
+            sendPanicToCurrentAudioUnit()
+        }
+        gainDB = min(max(settings.gainDB, -60.0), 0.0)
+        isEnabled = settings.enabled
+
+        guard settings.enabled else {
+            loadGeneration &+= 1
+            loadingComponentID = nil
+            stop()
+            completion(nil)
+            return
+        }
+
+        guard let componentID = settings.componentID,
+              let descriptor = Self.availableAudioUnits().first(where: { $0.id == componentID }) else {
+            loadGeneration &+= 1
+            loadingComponentID = nil
+            isEnabled = false
+            stop()
+            completion("Select an Audio Unit instrument before enabling Audio Unit output")
+            return
+        }
+
+        if currentDescriptor?.id == descriptor.id, audioUnit != nil {
+            audioUnitMixer.outputVolume = Self.linearGain(for: gainDB)
+            start(completion: completion)
+            return
+        }
+
+        if loadingComponentID == descriptor.id {
+            // A slider update or repeated toggle can arrive while the AU is
+            // being instantiated. The pending load observes the latest gain.
+            return
+        }
+
+        load(descriptor: descriptor, completion: completion)
+    }
+
+    func play() {
+        guard isEnabled, audioUnit != nil else { return }
+        start { error in
+            if let error = error {
+                errorLog(error, category: .audio)
+            }
+        }
+    }
+
+    func pause() {
+        guard engine.isRunning else { return }
+        engine.pause()
+    }
+
+    func stop() {
+        if engine.isRunning {
+            engine.stop()
+        }
+    }
+
+    func close() {
+        guard !isClosed else { return }
+        isClosed = true
+        loadGeneration &+= 1
+        loadingComponentID = nil
+        engine.stop()
+        if let audioUnit = audioUnit {
+            engine.disconnectNodeInput(audioUnit)
+            engine.detach(audioUnit)
+        }
+        audioUnit = nil
+        midiScheduler = nil
+        currentDescriptor = nil
+    }
+
+    func sendMIDI(_ event: [UInt8]) {
+        guard isEnabled,
+              !event.isEmpty,
+              let midiScheduler,
+              audioUnit != nil else {
+            return
+        }
+
+        scheduleMIDI(event, using: midiScheduler)
+    }
+
+    private func sendPanicToCurrentAudioUnit() {
+        guard let midiScheduler, audioUnit != nil else { return }
+        for channel in 0..<16 {
+            let status = 0xB0 | UInt8(channel)
+            scheduleMIDI([status, 123, 0], using: midiScheduler)
+            scheduleMIDI([status, 120, 0], using: midiScheduler)
+        }
+    }
+
+    private func scheduleMIDI(_ event: [UInt8],
+                              using scheduler: AUScheduleMIDIEventBlock) {
+        event.withUnsafeBufferPointer { buffer in
+            guard let baseAddress = buffer.baseAddress else { return }
+            scheduler(AUEventSampleTimeImmediate, 0, event.count, baseAddress)
+        }
+    }
+
+    func showEditor(completion: @escaping (Result<NSViewController, Error>) -> Void) {
+        guard let audioUnit = audioUnit else {
+            completion(.failure(Self.hostError("No Audio Unit is loaded")))
+            return
+        }
+
+        audioUnit.auAudioUnit.requestViewController { viewController in
+            DispatchQueue.main.async {
+                guard let viewController = viewController else {
+                    completion(.failure(Self.hostError("This Audio Unit does not provide a custom UI")))
+                    return
+                }
+                completion(.success(viewController))
+            }
+        }
+    }
+
+    private func load(descriptor: MPX68KAudioUnitDescriptor,
+                      completion: @escaping (String?) -> Void) {
+        loadGeneration &+= 1
+        let generation = loadGeneration
+        loadingComponentID = descriptor.id
+        stop()
+        if let oldAudioUnit = audioUnit {
+            engine.disconnectNodeInput(oldAudioUnit)
+            engine.detach(oldAudioUnit)
+        }
+        audioUnit = nil
+        midiScheduler = nil
+        currentDescriptor = nil
+
+        let description = AudioComponentDescription(
+            componentType: descriptor.componentType,
+            componentSubType: descriptor.componentSubType,
+            componentManufacturer: descriptor.componentManufacturer,
+            componentFlags: descriptor.componentFlags,
+            componentFlagsMask: descriptor.componentFlagsMask
+        )
+
+        AVAudioUnit.instantiate(with: description, options: []) { [weak self] unit, error in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                guard self.loadGeneration == generation else { return }
+                self.loadingComponentID = nil
+                if let error = error {
+                    self.isEnabled = false
+                    completion("Cannot load Audio Unit: \(error.localizedDescription)")
+                    return
+                }
+                guard let unit = unit else {
+                    self.isEnabled = false
+                    completion("Audio Unit returned no instance")
+                    return
+                }
+
+                guard let midiScheduler = unit.auAudioUnit.scheduleMIDIEventBlock else {
+                    self.isEnabled = false
+                    completion("This Audio Unit does not accept MIDI input")
+                    return
+                }
+
+                self.engine.attach(unit)
+                self.engine.connect(unit, to: self.audioUnitMixer, format: nil)
+
+                self.audioUnit = unit
+                self.currentDescriptor = descriptor
+                self.midiScheduler = midiScheduler
+                self.audioUnitMixer.outputVolume = Self.linearGain(for: self.gainDB)
+                self.start(completion: completion)
+            }
+        }
+    }
+
+    private func start(completion: @escaping (String?) -> Void) {
+        guard isEnabled, audioUnit != nil else {
+            completion(nil)
+            return
+        }
+        guard !engine.isRunning else {
+            completion(nil)
+            return
+        }
+
+        engine.prepare()
+        do {
+            try engine.start()
+            completion(nil)
+        } catch {
+            isEnabled = false
+            completion("Cannot start Audio Unit engine: \(error.localizedDescription)")
+        }
+    }
+
+    private static func linearGain(for decibels: Double) -> Float {
+        Float(pow(10.0, decibels / 20.0))
+    }
+
+    private static func hostError(_ message: String) -> NSError {
+        NSError(domain: "MPX68K.AudioUnitHost",
+                code: 1,
+                userInfo: [NSLocalizedDescriptionKey: message])
     }
 }
+
+#endif
 
 #endif
