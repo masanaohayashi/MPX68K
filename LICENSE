@@ -11,7 +11,8 @@ terms. See ATTRIBUTION.md for the full provenance of each component.
 | C68K (M68000 CPU core) | `X68000 Shared/px68k/m68000/c68k/` | Stephane Dallongeville (as distributed with Yabause) | GPL-2.0-or-later (see `LICENSES/GPL-2.0.txt`) |
 | px68k emulator core | `X68000 Shared/px68k/` | hissorii, based on WinX68k by Kenjo (けろぴー) | Terms of the upstream px68k / WinX68k projects |
 | Debabelizer (d68k disassembler) | `X68000 Shared/px68k/x68k/d68k.c`, `d68k.h` | Karl Stenerud (1999) | Freeware; the copyright notice must remain unaltered in source and binaries (see `d68k.h` header) |
-| fmgen (FM sound generator) | `X68000 Shared/px68k/fmgen/` | cisc (1998–2003) | cisc's distribution terms (copyright notices in source file headers) |
+| fmgen (legacy FM sound sources) | `X68000 Shared/px68k/fmgen/` | cisc (1998–2003) | cisc's distribution terms (copyright notices in source file headers); retained for source compatibility |
+| ymfm (active YM2151/OPM FM core) | `third_party/ymfm/` | Aaron Giles and contributors | BSD 3-Clause (see `third_party/ymfm/LICENSE` and `LICENSES/BSD-3-Clause-ymfm.txt`) |
 | win32api compatibility layer | `X68000 Shared/px68k/win32api/` | NONAKA Kimihiro (2003) | BSD-style license with advertising clause (see `win32api/dosio.h`) |
 | MPX68K Swift application layer and modifications | `X68000 Shared/`, `X68000 macOS/` | GOROman, YosAwed, and contributors | Distributed under the terms compatible with the components above |
 
@@ -27,3 +28,7 @@ GPL-compatible terms. The full text of the GPL-2.0 is provided in
 This file is a good-faith summary by the maintainers. If you are an
 upstream author and believe a component is misattributed or mislicensed
 here, please open an issue.
+
+The BSD 3-Clause license for ymfm applies only to the ymfm component. It does
+not replace the GPL or other license terms that apply to the remaining
+components of the combined work.

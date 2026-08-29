@@ -31,12 +31,13 @@ provenance of the third-party code vendored in this repository.
   used as long as this copyright notice remains unaltered in the source code
   and any binary files containing this code in compiled form."
 
-## fmgen — FM Sound Generator
+## fmgen — Legacy FM Sound Sources
 
 - **Location**: `X68000 Shared/px68k/fmgen/`
 - **Author**: Copyright (C) cisc 1998, 2003
-- **Notes**: FM synthesis core used for OPM (YM2151) emulation. The source
-  headers credit Tatsuyuki Satoh (fm.c for M.A.M.E.), Hiromitsu Shioya
+- **Notes**: These legacy sources remain in the project for source
+  compatibility. The active YM2151/OPM implementation uses ymfm instead. The
+  source headers credit Tatsuyuki Satoh (fm.c for M.A.M.E.), Hiromitsu Shioya
   (ADPCM-A), DMP-SOFT (OPNB), and KAJA (test program). fmgen is distributed
   under cisc's terms as stated in the upstream distribution.
 
