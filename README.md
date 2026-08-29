@@ -13,9 +13,7 @@ This fork adds the following audio and MIDI features on top of the upstream
 MPX68K repository:
 
 - **Dual MIDI output**: CoreMIDI OUT-A and RS-232C MIDI OUT-B can be selected
-  independently. MIDI IN is not connected yet. RS-232C requires a physical
-  MIDI interface or electrical converter; do not connect a DIN MIDI cable
-  directly to the serial port.
+  independently. MIDI IN is not connected yet.
 - **Timestamp-preserving MIDI scheduling**: MIDI events retain their host-clock
   timestamps through parsing and are scheduled with a shared look-ahead for
   CoreMIDI, Audio Unit, and serial output.
@@ -199,7 +197,7 @@ built automatically by the Xcode project; ymfm is pinned as the
 - **Disk State Management → Save Current State / Clear Saved State / Show State Information**
 - **JoyportU Settings → Disabled / Notify Mode / Command Mode**
 
-The MIDI & Audio Unit panel keeps the emulator audio active while optionally hosting a macOS Music Device Audio Unit in parallel. CoreMIDI is OUT-A; RS-232C is OUT-B and uses a selected `/dev/cu.*` or `/dev/tty.*` device at MIDI's 31,250 baud, 8-N-1 framing. MIDI events retain their host-clock timing through the parser, and CoreMIDI/AU scheduling uses a shared look-ahead timeline. Built-in YM2151 audio is generated at the hardware-derived 62,500 Hz rate and downsampled to the host device; Direct AudioUnit is the low-latency asynchronous path, while AudioQueue is available for compatibility. A physical RS-232C-to-MIDI electrical converter is required; a DIN MIDI cable must not be connected directly to the serial port. MIDI IN is not connected yet.
+The MIDI & Audio Unit panel keeps the emulator audio active while optionally hosting a macOS Music Device Audio Unit in parallel. CoreMIDI is OUT-A; RS-232C is OUT-B and uses a selected `/dev/cu.*` or `/dev/tty.*` device at MIDI's 31,250 baud, 8-N-1 framing. MIDI events retain their host-clock timing through the parser, and CoreMIDI/AU scheduling uses a shared look-ahead timeline. Built-in YM2151 audio is generated at the hardware-derived 62,500 Hz rate and downsampled to the host device; Direct AudioUnit is the low-latency asynchronous path, while AudioQueue is available for compatibility. MIDI IN is not connected yet.
 
 #### Joycard Input
 - **Arrow Keys** or **WASD**: 8-direction movement
