@@ -138,6 +138,8 @@ class GameScene: SKScene {
     private let audioUnitGainDefaultsKey = "AudioUnitOutput.GainDB"
     private let internalAudioModeDefaultsKey = "InternalAudio.RenderMode"
     private let internalAudioBufferFramesDefaultsKey = "InternalAudio.BufferFrames"
+    private let internalAudioADPCMGainDefaultsKey = "InternalAudio.ADPCMGainDB"
+    private let internalAudioOPMGainDefaultsKey = "InternalAudio.OPMGainDB"
     private var midiOutputSettings = MPX68KMIDIOutputSettings()
     private var audioUnitSettings = MPX68KAudioUnitSettings()
     private var internalAudioSettings = MPX68KInternalAudioSettings()
@@ -1774,9 +1776,15 @@ class GameScene: SKScene {
             ?? .asynchronous
         let bufferFrames = (defaults.object(forKey: internalAudioBufferFramesDefaultsKey)
             as? NSNumber)?.intValue ?? 64
+        let adpcmGainDB = (defaults.object(forKey: internalAudioADPCMGainDefaultsKey)
+            as? NSNumber)?.doubleValue ?? 0.0
+        let opmGainDB = (defaults.object(forKey: internalAudioOPMGainDefaultsKey)
+            as? NSNumber)?.doubleValue ?? 0.0
         internalAudioSettings = MPX68KInternalAudioSettings(
             mode: renderMode,
-            bufferFrames: bufferFrames
+            bufferFrames: bufferFrames,
+            adpcmGainDB: adpcmGainDB,
+            opmGainDB: opmGainDB
         )
     }
 
@@ -1809,7 +1817,9 @@ class GameScene: SKScene {
                                     persist: Bool = true) -> String? {
         let normalized = MPX68KInternalAudioSettings(
             mode: settings.mode,
-            bufferFrames: settings.bufferFrames
+            bufferFrames: settings.bufferFrames,
+            adpcmGainDB: settings.adpcmGainDB,
+            opmGainDB: settings.opmGainDB
         )
         guard let stream = audioStream else {
             return "Audio stream is not ready"
@@ -1819,11 +1829,39 @@ class GameScene: SKScene {
         if persist && error == nil {
             userDefaults.set(normalized.mode.rawValue, forKey: internalAudioModeDefaultsKey)
             userDefaults.set(normalized.bufferFrames, forKey: internalAudioBufferFramesDefaultsKey)
+            userDefaults.set(normalized.adpcmGainDB, forKey: internalAudioADPCMGainDefaultsKey)
+            userDefaults.set(normalized.opmGainDB, forKey: internalAudioOPMGainDefaultsKey)
         }
         if let error = error {
             warningLog("Built-in audio configuration: \(error)", category: .audio)
         }
         return error
+    }
+
+    @discardableResult
+    func applyInternalAudioGains(adpcmGainDB: Double,
+                                 opmGainDB: Double,
+                                 persist: Bool = true) -> String? {
+        let normalized = MPX68KInternalAudioSettings(
+            mode: internalAudioSettings.mode,
+            bufferFrames: internalAudioSettings.bufferFrames,
+            adpcmGainDB: adpcmGainDB,
+            opmGainDB: opmGainDB
+        )
+        guard let stream = audioStream else {
+            return "Audio stream is not ready"
+        }
+
+        stream.applyInternalAudioGains(
+            adpcmGainDB: normalized.adpcmGainDB,
+            opmGainDB: normalized.opmGainDB
+        )
+        internalAudioSettings = normalized
+        if persist {
+            userDefaults.set(normalized.adpcmGainDB, forKey: internalAudioADPCMGainDefaultsKey)
+            userDefaults.set(normalized.opmGainDB, forKey: internalAudioOPMGainDefaultsKey)
+        }
+        return nil
     }
 
     @discardableResult

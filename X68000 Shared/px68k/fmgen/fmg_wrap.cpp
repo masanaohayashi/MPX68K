@@ -50,14 +50,15 @@ public:
     }
 
     void setVolume(BYTE volume) {
-        // Config.OPM_VOL uses the original 0..16 FMGen scale. Preserve its
-        // attenuation curve while applying it to ymfm's 16-bit DAC output.
+        // Config.OPM_VOL uses the original 0..16 FMGen scale. FMGen's
+        // SetVolume() converts its dB value with 10^(dB/40), so keep that
+        // curve when applying the setting to ymfm's 16-bit DAC output.
         if (volume == 0) {
             m_volume = 0.0;
             return;
         }
         const int attenuationDB = (16 - static_cast<int>(volume)) * 4;
-        m_volume = std::pow(10.0, -static_cast<double>(attenuationDB) / 20.0);
+        m_volume = std::pow(10.0, -static_cast<double>(attenuationDB) / 40.0);
     }
 
     void generate(int* buffer, int length) {

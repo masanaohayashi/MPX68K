@@ -32,6 +32,7 @@ const int X68000_IsFrameDirty(void);
 void X68000_AudioCallBack(void* buffer, const unsigned int sample);
 void X68000_AudioRenderReset(void);
 void X68000_AudioRenderSetHostRate(unsigned int rate);
+void X68000_AudioRenderSetBusGains(float adpcmGainDB, float opmGainDB);
 unsigned int X68000_AudioRenderNativeSampleRate(void);
 void X68000_AudioRenderProduce(unsigned int frames);
 void X68000_AudioRenderConsumeFloat32(float* left, float* right, unsigned int frames);

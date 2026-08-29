@@ -241,6 +241,12 @@ class AudioStream {
     }
 
     private func configureInternalOutput() -> String? {
+        #if os(macOS)
+        applyInternalAudioGains(
+            adpcmGainDB: internalAudioSettings.adpcmGainDB,
+            opmGainDB: internalAudioSettings.opmGainDB
+        )
+        #endif
         X68000_AudioRenderReset()
 
         #if os(macOS)
@@ -469,6 +475,14 @@ class AudioStream {
         }
         return error
     }
+
+    #if os(macOS)
+
+    func applyInternalAudioGains(adpcmGainDB: Double, opmGainDB: Double) {
+        X68000_AudioRenderSetBusGains(Float(adpcmGainDB), Float(opmGainDB))
+    }
+
+    #endif
 
     #if os(macOS)
 

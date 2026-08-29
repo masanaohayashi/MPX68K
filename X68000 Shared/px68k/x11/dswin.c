@@ -44,6 +44,9 @@
 #define X68_AUDIO_DEFAULT_HOST_RATE 48000u
 #define X68_AUDIO_MAX_FRAMES 4096u
 #define X68_AUDIO_CAPTURE_RING_CAPACITY 32768u
+#define X68_AUDIO_GAIN_Q16_ONE 65536
+#define X68_AUDIO_BUS_GAIN_MIN_DB (-24.0f)
+#define X68_AUDIO_BUS_GAIN_MAX_DB (24.0f)
 
 static int16_t s_audioRing[X68_AUDIO_RING_CAPACITY * 2u];
 static _Atomic uint64_t s_audioWriteFrame;
@@ -59,6 +62,8 @@ static int16_t s_audioCaptureRing[X68_AUDIO_CAPTURE_RING_CAPACITY * 2u];
 static _Atomic uint64_t s_audioCaptureWriteFrame;
 static _Atomic uint64_t s_audioCaptureReadFrame;
 static _Atomic int s_audioCaptureEnabled;
+static _Atomic int32_t s_audioAdpcmGainQ16 = X68_AUDIO_GAIN_Q16_ONE;
+static _Atomic int32_t s_audioOpmGainQ16 = X68_AUDIO_GAIN_Q16_ONE;
 
 DWORD ratebase = 62500;
 long DSound_PreCounter = 0;
@@ -182,6 +187,31 @@ unsigned int X68000_AudioRenderNativeSampleRate(void)
     return s_audioNativeRate;
 }
 
+static int32_t audioGainQ16(float gainDB)
+{
+    if (!isfinite(gainDB)) {
+        gainDB = 0.0f;
+    }
+    if (gainDB < X68_AUDIO_BUS_GAIN_MIN_DB) {
+        gainDB = X68_AUDIO_BUS_GAIN_MIN_DB;
+    } else if (gainDB > X68_AUDIO_BUS_GAIN_MAX_DB) {
+        gainDB = X68_AUDIO_BUS_GAIN_MAX_DB;
+    }
+
+    const double linearGain = pow(10.0, (double)gainDB / 20.0);
+    return (int32_t)llround(linearGain * (double)X68_AUDIO_GAIN_Q16_ONE);
+}
+
+void X68000_AudioRenderSetBusGains(float adpcmGainDB, float opmGainDB)
+{
+    atomic_store_explicit(&s_audioAdpcmGainQ16,
+                          audioGainQ16(adpcmGainDB),
+                          memory_order_release);
+    atomic_store_explicit(&s_audioOpmGainQ16,
+                          audioGainQ16(opmGainDB),
+                          memory_order_release);
+}
+
 static int16_t clamp16(int value)
 {
     if (value > 32767) {
@@ -191,6 +221,14 @@ static int16_t clamp16(int value)
         return -32768;
     }
     return (int16_t)value;
+}
+
+static int scaleAudioSample(int sample, int32_t gainQ16)
+{
+    int64_t scaled = (int64_t)sample * gainQ16;
+    scaled += (scaled >= 0) ? (X68_AUDIO_GAIN_Q16_ONE / 2)
+                            : -(X68_AUDIO_GAIN_Q16_ONE / 2);
+    return (int)(scaled / X68_AUDIO_GAIN_Q16_ONE);
 }
 
 static void mixNativeFrames(const int16_t *adpcm,
@@ -209,11 +247,17 @@ static void mixNativeFrames(const int16_t *adpcm,
 
     const uint32_t writableFrames = (uint32_t)(X68_AUDIO_RING_CAPACITY - queuedFrames);
     const uint32_t framesToWrite = (frames < writableFrames) ? frames : writableFrames;
+    const int32_t adpcmGainQ16 = atomic_load_explicit(&s_audioAdpcmGainQ16,
+                                                       memory_order_acquire);
+    const int32_t opmGainQ16 = atomic_load_explicit(&s_audioOpmGainQ16,
+                                                     memory_order_acquire);
 
     for (uint32_t frame = 0; frame < framesToWrite; ++frame) {
         const int sampleIndex = (int)(frame * 2u);
-        const int mixedLeft = (int)adpcm[sampleIndex] + opm[sampleIndex];
-        const int mixedRight = (int)adpcm[sampleIndex + 1] + opm[sampleIndex + 1];
+        const int mixedLeft = scaleAudioSample(adpcm[sampleIndex], adpcmGainQ16)
+            + scaleAudioSample(opm[sampleIndex], opmGainQ16);
+        const int mixedRight = scaleAudioSample(adpcm[sampleIndex + 1], adpcmGainQ16)
+            + scaleAudioSample(opm[sampleIndex + 1], opmGainQ16);
         const uint32_t ringIndex = (uint32_t)(writeFrame + frame) & X68_AUDIO_RING_MASK;
         s_audioRing[ringIndex * 2u] = clamp16(mixedLeft);
         s_audioRing[ringIndex * 2u + 1u] = clamp16(mixedRight);

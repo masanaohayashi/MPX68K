@@ -39,16 +39,29 @@ public enum MPX68KInternalAudioRenderMode: String, CaseIterable, Identifiable {
 /// Settings for the built-in YM2151/ADPCM output path.
 public struct MPX68KInternalAudioSettings: Equatable {
     public static let bufferFrameOptions = [16, 32, 64, 128, 256, 512]
+    public static let busGainRange = -24.0...24.0
+    public static let busGainStep = 0.5
 
     public var mode: MPX68KInternalAudioRenderMode
     public var bufferFrames: Int
+    public var adpcmGainDB: Double
+    public var opmGainDB: Double
 
     public init(mode: MPX68KInternalAudioRenderMode = .asynchronous,
-                bufferFrames: Int = 64) {
+                bufferFrames: Int = 64,
+                adpcmGainDB: Double = 0.0,
+                opmGainDB: Double = 0.0) {
         self.mode = mode
         self.bufferFrames = Self.bufferFrameOptions.contains(bufferFrames)
             ? bufferFrames
             : 64
+        self.adpcmGainDB = Self.normalizedBusGain(adpcmGainDB)
+        self.opmGainDB = Self.normalizedBusGain(opmGainDB)
+    }
+
+    private static func normalizedBusGain(_ value: Double) -> Double {
+        guard value.isFinite else { return 0.0 }
+        return min(max(value, busGainRange.lowerBound), busGainRange.upperBound)
     }
 }
 
