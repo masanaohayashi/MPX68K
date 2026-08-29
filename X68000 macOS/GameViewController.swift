@@ -2388,6 +2388,11 @@ private struct MIDIAndAudioSettingsPanel: View {
                 .foregroundColor(.secondary)
 
             Toggle("Use Audio Unit", isOn: $useAudioUnit)
+                .disabled(
+                    audioUnits.isEmpty
+                        || selectedAudioUnitID.isEmpty
+                        || isApplyingAudioUnit
+                )
 
             Picker("Instrument", selection: $selectedAudioUnitID) {
                 Text("Not selected").tag("")
@@ -2395,10 +2400,17 @@ private struct MIDIAndAudioSettingsPanel: View {
                     Text(audioUnit.name).tag(audioUnit.id)
                 }
             }
-            .disabled(!useAudioUnit || audioUnits.isEmpty)
+            .disabled(audioUnits.isEmpty || isApplyingAudioUnit)
 
             if audioUnits.isEmpty {
-                Text("No MIDI-capable Audio Unit instruments were found.")
+                Text(
+                    "No MIDI-capable Audio Unit instruments were found. "
+                    + "Install a Music Device Audio Unit, then press Refresh."
+                )
+                    .font(.system(size: 12))
+                    .foregroundColor(.secondary)
+            } else if selectedAudioUnitID.isEmpty {
+                Text("Select an instrument before enabling Audio Unit output.")
                     .font(.system(size: 12))
                     .foregroundColor(.secondary)
             }
@@ -2442,6 +2454,14 @@ private struct MIDIAndAudioSettingsPanel: View {
 
     private func applyAudioUnitSettings() {
         guard let scene = sceneReference.scene else { return }
+
+        if useAudioUnit && selectedAudioUnitID.isEmpty {
+            isApplyingAudioUnit = false
+            useAudioUnit = false
+            statusMessage = "Select an Audio Unit instrument before enabling Audio Unit output"
+            return
+        }
+
         let settings = MPX68KAudioUnitSettings(
             enabled: useAudioUnit,
             componentID: selectedAudioUnitID.isEmpty ? nil : selectedAudioUnitID,
