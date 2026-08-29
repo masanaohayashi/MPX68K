@@ -26,10 +26,12 @@ MPX68K repository:
   as the asynchronous low-latency path, with AudioQueue retained for
   compatibility. The buffer-size setting supports 16, 32, 64 (default), 128,
   256, and 512 frames.
-- **Live FM/ADPCM balance controls**: Independent FM and ADPCM trims are
-  available from -24 dB to +24 dB in 0.5 dB steps. They apply immediately
-  without reinitializing audio and are saved between launches; for example,
-  ADPCM -6 dB and FM +6 dB can be selected directly in the settings panel.
+- **Live audio source level controls**: Independent built-in FM and ADPCM
+  trims are available from -24 dB to +24 dB in 0.5 dB steps. The hosted Audio
+  Unit synth has a separate output volume from -60 dB to 0 dB in 0.5 dB steps.
+  Volume changes apply immediately and are saved between launches; for
+  example, ADPCM -6 dB and FM +6 dB can be selected directly in the settings
+  panel.
 
 ## Features
 
