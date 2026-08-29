@@ -20,8 +20,8 @@ MPX68K repository:
   the instrument's custom UI and controls its output gain. The built-in
   emulator audio remains active in parallel.
 - **ymfm YM2151 audio**: The active FM generator uses the pinned
-  `third_party/ymfm` submodule. YM2151 is rendered at the X68000 hardware-derived
-  62,500 Hz rate and downsampled to the host audio device rate.
+  `third_party/ymfm` submodule and adapts its output to the host audio device
+  rate.
 - **Low-latency built-in audio**: Direct HAL AudioUnit rendering is available
   as the asynchronous low-latency path, with AudioQueue retained for
   compatibility. The buffer-size setting supports 16, 32, 64 (default), 128,
@@ -194,7 +194,7 @@ built automatically by the Xcode project; ymfm is pinned as the
 - **Disk State Management → Save Current State / Clear Saved State / Show State Information**
 - **JoyportU Settings → Disabled / Notify Mode / Command Mode**
 
-The MIDI & Audio Unit panel keeps the emulator audio active while optionally hosting a macOS Music Device Audio Unit in parallel. CoreMIDI is OUT-A; RS-232C is OUT-B and uses a selected `/dev/cu.*` or `/dev/tty.*` device at MIDI's 31,250 baud, 8-N-1 framing. MIDI events retain their host-clock timing through the parser, and CoreMIDI/AU scheduling uses a shared look-ahead timeline. Built-in YM2151 audio is generated at the hardware-derived 62,500 Hz rate and downsampled to the host device; Direct AudioUnit is the low-latency asynchronous path, while AudioQueue is available for compatibility. MIDI IN is not connected yet.
+The MIDI & Audio Unit panel keeps the emulator audio active while optionally hosting a macOS Music Device Audio Unit in parallel. CoreMIDI is OUT-A; RS-232C is OUT-B and uses a selected `/dev/cu.*` or `/dev/tty.*` device at MIDI's 31,250 baud, 8-N-1 framing. MIDI events retain their host-clock timing through the parser, and CoreMIDI/AU scheduling uses a shared look-ahead timeline. Built-in YM2151 audio is adapted to match the host device rate; Direct AudioUnit is the low-latency asynchronous path, while AudioQueue is available for compatibility. MIDI IN is not connected yet.
 
 #### Joycard Input
 - **Arrow Keys** or **WASD**: 8-direction movement
@@ -385,7 +385,7 @@ For detailed architecture documentation with diagrams, see [ARCHITECTURE.md](ARC
 #### Fixes & Improvements
 - **Mouse Reliability**: Capture stability, Y-inversion fix, drift/inertia tuning, and SCC compatibility mode for VS.X double-click
 - **Rendering**: Skip unchanged frames to reduce GPU load
-- **Audio**: YMFM YM2151 native-rate mixing, host-rate downsampling, and low-latency AudioUnit output
+- **Audio**: YMFM YM2151 host-rate audio output and low-latency AudioUnit output
 - **Build System**: macOS deployment target lowered to 12.0, x86_64 re-enabled for Intel Macs
 - **Secure Restorable State**: Enabled on macOS
 - **Compiler Warnings**: Legacy dead-code SCSI helpers removed, keeping the build warning-free
