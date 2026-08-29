@@ -162,7 +162,7 @@ The project includes a dependency on the c68k CPU emulator which is built automa
 - **Disk State Management → Save Current State / Clear Saved State / Show State Information**
 - **JoyportU Settings → Disabled / Notify Mode / Command Mode**
 
-The MIDI & Audio Unit panel keeps the existing emulator audio active while optionally hosting a macOS Music Device Audio Unit in parallel. CoreMIDI is OUT-A; RS-232C is OUT-B and uses a selected `/dev/cu.*` or `/dev/tty.*` device at MIDI's 31,250 baud, 8-N-1 framing. A physical RS-232C-to-MIDI electrical converter is required; a DIN MIDI cable must not be connected directly to the serial port. MIDI IN is not connected yet.
+The MIDI & Audio Unit panel keeps the existing emulator audio active while optionally hosting a macOS Music Device Audio Unit in parallel. CoreMIDI is OUT-A; RS-232C is OUT-B and uses a selected `/dev/cu.*` or `/dev/tty.*` device at MIDI's 31,250 baud, 8-N-1 framing. MIDI events retain their host-clock timing through the parser, and CoreMIDI/AU scheduling uses a shared look-ahead timeline. A physical RS-232C-to-MIDI electrical converter is required; a DIN MIDI cable must not be connected directly to the serial port. MIDI IN is not connected yet.
 
 #### Joycard Input
 - **Arrow Keys** or **WASD**: 8-direction movement

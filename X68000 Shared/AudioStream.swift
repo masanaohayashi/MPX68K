@@ -316,8 +316,8 @@ class AudioStream {
         audioUnitHost.apply(settings, completion: completion)
     }
 
-    func sendAudioUnitMIDI(_ event: [UInt8]) {
-        audioUnitHost.sendMIDI(event)
+    func sendAudioUnitMIDI(_ event: [UInt8], hostTime: UInt64) {
+        audioUnitHost.sendMIDI(event, hostTime: hostTime)
     }
 
     func showAudioUnitEditor(completion: @escaping (Result<NSViewController, Error>) -> Void) {
@@ -462,7 +462,7 @@ private final class MPX68KAudioUnitHost {
         currentDescriptor = nil
     }
 
-    func sendMIDI(_ event: [UInt8]) {
+    func sendMIDI(_ event: [UInt8], hostTime: UInt64) {
         guard isEnabled,
               !event.isEmpty,
               let midiScheduler,
@@ -470,24 +470,57 @@ private final class MPX68KAudioUnitHost {
             return
         }
 
-        scheduleMIDI(event, using: midiScheduler)
+        scheduleMIDI(event, atHostTime: hostTime, using: midiScheduler)
     }
 
     private func sendPanicToCurrentAudioUnit() {
         guard let midiScheduler, audioUnit != nil else { return }
         for channel in 0..<16 {
             let status = 0xB0 | UInt8(channel)
-            scheduleMIDI([status, 123, 0], using: midiScheduler)
-            scheduleMIDI([status, 120, 0], using: midiScheduler)
+            scheduleMIDI([status, 123, 0], atHostTime: 0, using: midiScheduler)
+            scheduleMIDI([status, 120, 0], atHostTime: 0, using: midiScheduler)
         }
     }
 
     private func scheduleMIDI(_ event: [UInt8],
+                              atHostTime hostTime: UInt64,
                               using scheduler: AUScheduleMIDIEventBlock) {
+        let eventSampleTime = sampleTime(forHostTime: hostTime)
         event.withUnsafeBufferPointer { buffer in
             guard let baseAddress = buffer.baseAddress else { return }
-            scheduler(AUEventSampleTimeImmediate, 0, event.count, baseAddress)
+            scheduler(eventSampleTime, 0, event.count, baseAddress)
         }
+    }
+
+    private func sampleTime(forHostTime hostTime: UInt64) -> AUEventSampleTime {
+        guard let renderTime = engine.outputNode.lastRenderTime,
+              renderTime.isHostTimeValid,
+              renderTime.isSampleTimeValid,
+              renderTime.sampleRate > 0.0 else {
+            // The engine may not have rendered its first cycle yet. Immediate
+            // is the only valid fallback until an audio time anchor exists.
+            return AUEventSampleTimeImmediate
+        }
+
+        let anchorHostTime = renderTime.hostTime
+        let hostClockFrequency = AudioGetHostClockFrequency()
+        guard hostClockFrequency > 0.0 else {
+            return AUEventSampleTimeImmediate
+        }
+        let deltaTicks: Double
+        if hostTime >= anchorHostTime {
+            deltaTicks = Double(hostTime - anchorHostTime)
+        } else {
+            deltaTicks = -Double(anchorHostTime - hostTime)
+        }
+        let deltaFrames = AVAudioFramePosition(
+            (deltaTicks / hostClockFrequency * renderTime.sampleRate).rounded()
+        )
+        let targetSampleTime = renderTime.sampleTime + deltaFrames
+        guard targetSampleTime > renderTime.sampleTime else {
+            return AUEventSampleTimeImmediate
+        }
+        return AUEventSampleTime(targetSampleTime)
     }
 
     func showEditor(completion: @escaping (Result<NSViewController, Error>) -> Void) {

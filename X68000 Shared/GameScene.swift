@@ -1076,8 +1076,8 @@ class GameScene: SKScene {
         let stream = AudioStream(samplingrate: sample)
         self.audioStream = stream
         #if os(macOS)
-        midiController.setAudioUnitSender { [weak stream] event in
-            stream?.sendAudioUnitMIDI(event)
+        midiController.setAudioUnitSender { [weak stream] event, hostTime in
+            stream?.sendAudioUnitMIDI(event, hostTime: hostTime)
         }
         stream.applyAudioUnitSettings(audioUnitSettings) { error in
             if let error = error {
@@ -1474,6 +1474,7 @@ class GameScene: SKScene {
                     X68000_Update(self.clockMHz, 0)
                 }
                 self.flushMIDIBuffer()
+                self.midiController.flushDelayedEvents()
             }
             
             // Start periodic SRAM save timer (every 30 seconds)
@@ -1622,8 +1623,9 @@ class GameScene: SKScene {
     private func flushMIDIBuffer() {
         let size = X68000_GetMIDIBufferSize()
         guard size > 0 else { return }
-        guard let buffer = X68000_GetMIDIBuffer() else { return }
-        midiController.Send(buffer, Int(size))
+        guard let hostTimes = X68000_GetMIDIBufferHostTimes(),
+              let buffer = X68000_GetMIDIBuffer() else { return }
+        midiController.sendStream(buffer, hostTimes, Int(size))
     }
 
     #if os(macOS)

@@ -10,6 +10,7 @@ import Foundation
 import CoreMIDI
 
 #if os(macOS)
+import AudioToolbox
 import Darwin
 #endif
 
@@ -248,8 +249,8 @@ private final class MPX68KSerialMIDIOutput {
 #endif
 
 private func withMIDIPacketList(_ events: [MidiEvent],
+                                timestamp: MIDITimeStamp,
                                 send: (UnsafeMutablePointer<MIDIPacketList>) -> Void) {
-    let timestamp = MIDITimeStamp(0)
     let totalBytes = events.reduce(0) { $0 + $1.count }
     let listSize = MemoryLayout<MIDIPacketList>.size + totalBytes
     let byteBuffer = UnsafeMutablePointer<UInt8>.allocate(capacity: listSize)
@@ -278,6 +279,13 @@ private func withMIDIPacketList(_ events: [MidiEvent],
 
 final class MIDIController {
     private static let maxSysExBytes = 64 * 1024
+    #if os(macOS)
+    // MIDI events are drained at the end of an emulation frame. Keep a small
+    // look-ahead so CoreMIDI and the Audio Unit can still play them at their
+    // original host-time positions instead of collapsing them to the flush.
+    private static let midiSchedulingLeadSeconds = 0.025
+    private static let midiSchedulingSafetySeconds = 0.002
+    #endif
 
     var clientRef: MIDIClientRef = 0
     var inPortRef: MIDIPortRef = 0
@@ -297,7 +305,7 @@ final class MIDIController {
     private(set) var outputSettings = MPX68KMIDIOutputSettings()
     private var selectedCoreMIDIDestination: MIDIEndpointRef = 0
     private let serialMIDIOutput = MPX68KSerialMIDIOutput()
-    private var audioUnitSender: (([UInt8]) -> Void)?
+    private var audioUnitSender: (([UInt8], UInt64) -> Void)?
     #else
     private var midiDests: [MIDIEndpointRef] = []
     #endif
@@ -305,8 +313,12 @@ final class MIDIController {
     private var outputDelayMs: Double = 0.0
 
     private struct PendingEvent {
-        let dueTime: CFTimeInterval
         let data: [UInt8]
+        #if os(macOS)
+        let dueHostTime: UInt64
+        #else
+        let dueTime: CFTimeInterval
+        #endif
     }
     private var pendingEvents: [PendingEvent] = []
     private var pendingIndex: Int = 0
@@ -315,8 +327,10 @@ final class MIDIController {
     private var pendingStatus: UInt8? = nil
     private var pendingExpected: Int = 0
     private var pendingData: [UInt8] = []
+    private var pendingHostTime: UInt64 = 0
     private var inSysEx: Bool = false
     private var sysExBuffer: [UInt8] = []
+    private var sysExHostTime: UInt64 = 0
 
     init() {
         connect()
@@ -364,33 +378,41 @@ final class MIDIController {
     }
 
     func Send(_ buffer: UnsafeMutablePointer<UInt8>?, _ count: Int) {
-        sendStream(buffer, count)
+        sendStream(buffer, nil, count)
     }
 
     func sendStream(_ buffer: UnsafePointer<UInt8>?, _ count: Int) {
+        sendStream(buffer, nil, count)
+    }
+
+    func sendStream(_ buffer: UnsafePointer<UInt8>?,
+                    _ hostTimes: UnsafePointer<UInt64>?,
+                    _ count: Int) {
         guard let buffer, count > 0 else { return }
         for index in 0..<count {
-            handleIncomingByte(buffer[index])
+            handleIncomingByte(buffer[index], hostTime: hostTimes?[index] ?? 0)
         }
     }
 
-    private func handleIncomingByte(_ byte: UInt8) {
+    private func handleIncomingByte(_ byte: UInt8, hostTime: UInt64) {
         if inSysEx {
             if byte >= 0xF8 { // Realtime messages may interleave with SysEx.
-                sendEvent([byte])
+                sendEvent([byte], hostTime: hostTime)
                 return
             }
             guard sysExBuffer.count < Self.maxSysExBytes else {
                 warningLog("Dropping oversized MIDI SysEx event", category: .network)
                 sysExBuffer.removeAll(keepingCapacity: true)
                 inSysEx = false
+                sysExHostTime = 0
                 return
             }
             sysExBuffer.append(byte)
             if byte == 0xF7 {
-                sendEvent(sysExBuffer)
+                sendEvent(sysExBuffer, hostTime: sysExHostTime)
                 sysExBuffer.removeAll(keepingCapacity: true)
                 inSysEx = false
+                sysExHostTime = 0
             }
             return
         }
@@ -400,13 +422,15 @@ final class MIDIController {
                 inSysEx = true
                 sysExBuffer.removeAll(keepingCapacity: true)
                 sysExBuffer.append(byte)
+                sysExHostTime = hostTime
                 pendingStatus = nil
                 pendingExpected = 0
                 pendingData.removeAll(keepingCapacity: true)
+                pendingHostTime = 0
                 return
             }
             if byte >= 0xF8 {
-                sendEvent([byte])
+                sendEvent([byte], hostTime: hostTime)
                 return
             }
             if byte >= 0xF0 {
@@ -414,10 +438,12 @@ final class MIDIController {
                 pendingStatus = byte
                 pendingExpected = expectedDataLength(for: byte)
                 pendingData.removeAll(keepingCapacity: true)
+                pendingHostTime = hostTime
                 if pendingExpected == 0 {
-                    sendEvent([byte])
+                    sendEvent([byte], hostTime: pendingHostTime)
                     pendingStatus = nil
                     pendingExpected = 0
+                    pendingHostTime = 0
                 }
                 return
             }
@@ -425,6 +451,7 @@ final class MIDIController {
             pendingStatus = byte
             pendingExpected = expectedDataLength(for: byte)
             pendingData.removeAll(keepingCapacity: true)
+            pendingHostTime = hostTime
             return
         }
 
@@ -433,6 +460,7 @@ final class MIDIController {
                 pendingStatus = running
                 pendingExpected = expectedDataLength(for: running)
                 pendingData.removeAll(keepingCapacity: true)
+                pendingHostTime = hostTime
             } else {
                 return
             }
@@ -443,7 +471,7 @@ final class MIDIController {
             if let status = pendingStatus {
                 var event = [status]
                 event.append(contentsOf: pendingData.prefix(pendingExpected))
-                sendEvent(event)
+                sendEvent(event, hostTime: pendingHostTime)
                 if status >= 0xF0 {
                     runningStatus = nil
                 }
@@ -451,6 +479,7 @@ final class MIDIController {
             pendingStatus = nil
             pendingExpected = 0
             pendingData.removeAll(keepingCapacity: true)
+            pendingHostTime = 0
         }
     }
 
@@ -471,57 +500,91 @@ final class MIDIController {
         return 2
     }
 
-    private func sendEvent(_ event: [UInt8]) {
-        guard !event.isEmpty else { return }
+    #if os(macOS)
 
-        if outputDelayMs > 0.0 {
-            #if os(macOS)
-            // AU monitoring should remain playable even when a hardware MIDI
-            // compensation delay is configured for the physical outputs.
-            audioUnitSender?(event)
-            #endif
-            let due = CFAbsoluteTimeGetCurrent() + (outputDelayMs / 1000.0)
-            pendingEvents.append(PendingEvent(dueTime: due, data: event))
-            return
-        }
-        sendEventImmediately(event)
+    private func hostTimeTicks(for seconds: Double) -> UInt64 {
+        guard seconds > 0.0 else { return 0 }
+        let ticks = seconds * AudioGetHostClockFrequency()
+        guard ticks.isFinite, ticks < Double(UInt64.max) else { return UInt64.max }
+        return UInt64(ticks.rounded())
     }
 
-    private func sendEventImmediately(_ event: [UInt8], includeAudioUnit: Bool = true) {
+    private func addingHostTime(_ hostTime: UInt64, ticks: UInt64) -> UInt64 {
+        guard UInt64.max - hostTime >= ticks else { return UInt64.max }
+        return hostTime + ticks
+    }
+
+    private func scheduledHostTime(for sourceHostTime: UInt64) -> UInt64 {
+        let now = AudioGetCurrentHostTime()
+        let source = sourceHostTime == 0 ? now : sourceHostTime
+        let lead = hostTimeTicks(for: Self.midiSchedulingLeadSeconds)
+        let safety = hostTimeTicks(for: Self.midiSchedulingSafetySeconds)
+        let desired = addingHostTime(source, ticks: lead)
+        let earliest = addingHostTime(now, ticks: safety)
+        return max(desired, earliest)
+    }
+
+    #endif
+
+    private func sendEvent(_ event: [UInt8], hostTime sourceHostTime: UInt64) {
         guard !event.isEmpty else { return }
 
         #if os(macOS)
+        let eventHostTime = scheduledHostTime(for: sourceHostTime)
+
+        // The AU and CoreMIDI paths use the same host-time timeline. The AU
+        // remains free of the user-configured hardware compensation delay.
+        audioUnitSender?(event, eventHostTime)
+
+        let physicalHostTime = addingHostTime(
+            eventHostTime,
+            ticks: hostTimeTicks(for: outputDelayMs / 1000.0)
+        )
+        sendCoreMIDIChunks(event, hostTime: physicalHostTime)
+
         if outputSettings.rs232cEnabled {
-            // The complete event is written as-is to the serial MIDI stream;
-            // CoreMIDI packet chunking below is only a transport detail.
-            serialMIDIOutput.send(event)
+            if physicalHostTime <= AudioGetCurrentHostTime() {
+                // A serial port cannot consume CoreMIDI timestamps. Preserve
+                // the event order and wait until the requested host time.
+                serialMIDIOutput.send(event)
+            } else {
+                pendingEvents.append(PendingEvent(data: event,
+                                                  dueHostTime: physicalHostTime))
+            }
         }
-        if includeAudioUnit {
-            audioUnitSender?(event)
+        #else
+        if outputDelayMs > 0.0 {
+            let dueTime = CFAbsoluteTimeGetCurrent() + (outputDelayMs / 1000.0)
+            pendingEvents.append(PendingEvent(data: event, dueTime: dueTime))
+        } else {
+            sendCoreMIDIChunks(event, hostTime: sourceHostTime)
         }
         #endif
+    }
 
+    private func sendCoreMIDIChunks(_ event: [UInt8], hostTime: UInt64) {
         if event.count <= 255 {
-            sendCoreMIDI(event)
+            sendCoreMIDI(event, hostTime: hostTime)
             return
         }
 
         var offset = 0
         while offset < event.count {
             let end = min(offset + 255, event.count)
-            sendCoreMIDI(Array(event[offset..<end]))
+            sendCoreMIDI(Array(event[offset..<end]), hostTime: hostTime)
             offset = end
         }
     }
 
-    private func sendCoreMIDI(_ event: [UInt8]) {
+    private func sendCoreMIDI(_ event: [UInt8], hostTime: UInt64) {
         #if os(macOS)
         guard outputSettings.coreMIDIEnabled,
               outPortRef != 0,
               selectedCoreMIDIDestination != 0 else {
             return
         }
-        withMIDIPacketList([event]) { packetList in
+        let timestamp = MIDITimeStamp(hostTime == 0 ? AudioGetCurrentHostTime() : hostTime)
+        withMIDIPacketList([event], timestamp: timestamp) { packetList in
             let status = MIDISend(outPortRef, selectedCoreMIDIDestination, packetList)
             if status != noErr {
                 errorLog("CoreMIDI send failed: \(status)", category: .network)
@@ -530,7 +593,7 @@ final class MIDIController {
         #else
         guard outPortRef != 0 else { return }
         if midiDst0 != 0 {
-            withMIDIPacketList([event]) { packetList in
+            withMIDIPacketList([event], timestamp: 0) { packetList in
                 _ = MIDISend(outPortRef, midiDst0, packetList)
             }
         }
@@ -541,20 +604,40 @@ final class MIDIController {
         outputDelayMs = max(0.0, ms)
     }
 
-    func flushDelayedEvents(_ now: CFTimeInterval = CFAbsoluteTimeGetCurrent()) {
+    func flushDelayedEvents() {
+        #if os(macOS)
+        let now = AudioGetCurrentHostTime()
         guard pendingIndex < pendingEvents.count else { return }
         while pendingIndex < pendingEvents.count {
             let item = pendingEvents[pendingIndex]
-            if item.dueTime > now {
+            if item.dueHostTime > now {
                 break
             }
-            sendEventImmediately(item.data, includeAudioUnit: false)
+            if outputSettings.rs232cEnabled {
+                serialMIDIOutput.send(item.data)
+            }
             pendingIndex += 1
         }
         if pendingIndex > 256 {
             pendingEvents.removeFirst(pendingIndex)
             pendingIndex = 0
         }
+        #else
+        let now = CFAbsoluteTimeGetCurrent()
+        guard pendingIndex < pendingEvents.count else { return }
+        while pendingIndex < pendingEvents.count {
+            let item = pendingEvents[pendingIndex]
+            if item.dueTime > now {
+                break
+            }
+            sendCoreMIDIChunks(item.data, hostTime: 0)
+            pendingIndex += 1
+        }
+        if pendingIndex > 256 {
+            pendingEvents.removeFirst(pendingIndex)
+            pendingIndex = 0
+        }
+        #endif
     }
 
     private func midiNotifyBlock(midiNotification: UnsafePointer<MIDINotification>) {
@@ -584,6 +667,8 @@ final class MIDIController {
     }
 
     func configureOutputs(_ settings: MPX68KMIDIOutputSettings) -> String? {
+        pendingEvents.removeAll(keepingCapacity: true)
+        pendingIndex = 0
         outputSettings = settings
         selectedCoreMIDIDestination = 0
         midiDst0 = 0
@@ -623,7 +708,7 @@ final class MIDIController {
         return errors.isEmpty ? nil : errors.joined(separator: "; ")
     }
 
-    func setAudioUnitSender(_ sender: (([UInt8]) -> Void)?) {
+    func setAudioUnitSender(_ sender: (([UInt8], UInt64) -> Void)?) {
         audioUnitSender = sender
     }
 

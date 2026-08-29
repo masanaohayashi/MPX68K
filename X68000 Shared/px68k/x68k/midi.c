@@ -26,6 +26,11 @@
 #include "midi.h"
 #include "m68000.h"
 
+#include <stdint.h>
+#ifdef __APPLE__
+#include <mach/mach_time.h>
+#endif
+
 #define MIDIBUFFERS 1024			// 1024は流石に越えないでしょう^_^;
 #define MIDIBUFTIMER 3200			// 10MHz / (31.25K / 10bit) = 3200 が正解になります... 
 #define MIDIFIFOSIZE 256
@@ -651,15 +656,33 @@ BYTE FASTCALL MIDI_Read(DWORD adr)
 
 #define MAX_MIDI_BUFFER_SIZE 4096
 static BYTE s_midibuffer[MAX_MIDI_BUFFER_SIZE];
+static uint64_t s_midibuffer_hosttimes[MAX_MIDI_BUFFER_SIZE];
 static long s_midibuffersize = 0;
-void X68000_AddMIDIBuffer( const BYTE data )
+
+static uint64_t midiHostTimeNow(void)
+{
+#ifdef __APPLE__
+    return mach_absolute_time();
+#else
+    return 0;
+#endif
+}
+
+static void addMIDIByteToBufferAtHostTime(const BYTE data,
+                                          const uint64_t hostTime)
 {
     // Prevent overflow: drop when buffer is full to avoid asserts/crash
     if (s_midibuffersize >= MAX_MIDI_BUFFER_SIZE) {
         return; // graceful drop on overflow
     }
     s_midibuffer[s_midibuffersize] = data;
+    s_midibuffer_hosttimes[s_midibuffersize] = hostTime;
     s_midibuffersize++;
+}
+
+void X68000_AddMIDIBuffer(const BYTE data)
+{
+    addMIDIByteToBufferAtHostTime(data, midiHostTimeNow());
 }
 
 static void AddDelayBuf(BYTE msg)
@@ -683,6 +706,11 @@ unsigned char* X68000_GetMIDIBuffer(void)
 {
     s_midibuffersize = 0;
     return s_midibuffer;
+}
+
+const uint64_t* X68000_GetMIDIBufferHostTimes(void)
+{
+    return s_midibuffer_hosttimes;
 }
 
 void MIDI_GetMonitorState(MIDIMonitorState* state)

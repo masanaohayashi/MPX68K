@@ -77,6 +77,7 @@ void Memory_ClearSCSIMode(void);
 
 const long X68000_GetMIDIBufferSize();
 unsigned char* X68000_GetMIDIBuffer();
+const unsigned long long* X68000_GetMIDIBufferHostTimes();
 
 // PPI (JoyportU) functions
 void PPI_SetJoyportUMode(int mode);

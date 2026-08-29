@@ -230,9 +230,9 @@ graph LR
     EmulatorAudio --> AudioOutput
 ```
 
-On macOS, `MIDIController` sends each parsed MIDI event to the selected CoreMIDI destination and, independently, to the selected RS-232C device. The serial transport uses a dedicated file descriptor and asynchronous transmit queue configured for 31,250 baud, 8-N-1. MIDI IN is intentionally not connected yet.
+On macOS, `MIDIController` sends each parsed MIDI event to the selected CoreMIDI destination and, independently, to the selected RS-232C device. The C MIDI bridge records an Apple host-clock timestamp for every emitted byte; the Swift parser carries the first-byte timestamp through to the completed MIDI event. The serial transport uses a dedicated file descriptor and asynchronous transmit queue configured for 31,250 baud, 8-N-1. MIDI IN is intentionally not connected yet.
 
-The optional Audio Unit is hosted by a separate `AVAudioEngine` in the current MVP. Its MIDI scheduler receives events immediately, while the existing physical MIDI output delay remains applied to OUT-A/OUT-B. The existing emulator `AudioQueue` remains active, so the AU output is parallel to the built-in emulator audio. Settings persist the selected Audio Unit, enabled state, and gain from -60 dB to 0 dB; the longer-term single post-mix graph and recording integration remains future work.
+The optional Audio Unit is hosted by a separate `AVAudioEngine`. CoreMIDI packet timestamps and the AU scheduler are both derived from the captured host-clock timeline with a short look-ahead, so frame-end MIDI draining does not collapse events to `now`. The AU host converts the scheduled host time to the output node's sample-time anchor; an immediate AU event is used only before that anchor exists or when an event has already become late. The existing physical MIDI output delay remains applied to OUT-A/OUT-B. RS-232C has no timestamped transport, so OUT-B waits until its host-time deadline before writing the bytes. The existing emulator `AudioQueue` remains active, so the AU output is parallel to the built-in emulator audio. Settings persist the selected Audio Unit, enabled state, and gain from -60 dB to 0 dB; the longer-term single post-mix graph and recording integration remains future work.
 
 ## Input System Architecture
 
