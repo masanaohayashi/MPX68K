@@ -7,6 +7,35 @@ This repository is indirectly a fork of Mr. Hissorii's [px68k](https://github.co
 
 MPX68K provides authentic Sharp X68000 emulation with modern Swift UI frameworks, bridging low-level C emulation code with SpriteKit for an optimal user experience on both Apple Silicon and Intel Macs.
 
+## Changes in This Fork
+
+This fork adds the following audio and MIDI features on top of the upstream
+MPX68K repository:
+
+- **Dual MIDI output**: CoreMIDI OUT-A and RS-232C MIDI OUT-B can be selected
+  independently. MIDI IN is not connected yet. RS-232C requires a physical
+  MIDI interface or electrical converter; do not connect a DIN MIDI cable
+  directly to the serial port.
+- **Timestamp-preserving MIDI scheduling**: MIDI events retain their host-clock
+  timestamps through parsing and are scheduled with a shared look-ahead for
+  CoreMIDI, Audio Unit, and serial output.
+- **Optional Audio Unit instruments**: Install a MIDI-capable macOS Music
+  Device Audio Unit, open **MPX68K → MIDI & Audio Unit…**, press **Refresh**,
+  select the instrument, and enable **Use Audio Unit**. The panel also opens
+  the instrument's custom UI and controls its output gain. The built-in
+  emulator audio remains active in parallel.
+- **ymfm YM2151 audio**: The active FM generator uses the pinned
+  `third_party/ymfm` submodule. YM2151 is rendered at the X68000 hardware-derived
+  62,500 Hz rate and downsampled to the host audio device rate.
+- **Low-latency built-in audio**: Direct HAL AudioUnit rendering is available
+  as the asynchronous low-latency path, with AudioQueue retained for
+  compatibility. The buffer-size setting supports 16, 32, 64 (default), 128,
+  256, and 512 frames.
+- **Live FM/ADPCM balance controls**: Independent FM and ADPCM trims are
+  available from -24 dB to +24 dB in 0.5 dB steps. They apply immediately
+  without reinitializing audio and are saved between launches; for example,
+  ADPCM -6 dB and FM +6 dB can be selected directly in the settings panel.
+
 ## Features
 
 ### Core Emulation
@@ -133,7 +162,7 @@ built automatically by the Xcode project; ymfm is pinned as the
 ### macOS Menu Reference
 
 #### MPX68K Menu
-- **MIDI & Audio Unit…**: Select CoreMIDI OUT-A, RS-232C MIDI OUT-B, and an optional Audio Unit instrument. The Audio Unit panel also provides its output gain, opens the instrument's custom UI, and configures the built-in YM2151 render path and audio buffer size.
+- **MIDI & Audio Unit…**: Install a MIDI-capable macOS Music Device Audio Unit, press **Refresh**, then select it under **Instrument** and enable **Use Audio Unit**. The panel also provides the instrument's output gain, opens its custom UI, and configures the built-in YM2151 render path and audio buffer size.
 
 #### FDD Menu
 - **Open Drive 0…** / **Open Drive 1…**: Insert a floppy image
@@ -341,33 +370,6 @@ MPX68K uses a multi-layered architecture that bridges modern Swift UI frameworks
 - **c68k/**: Independent M68000 CPU emulator (static library)
 
 For detailed architecture documentation with diagrams, see [ARCHITECTURE.md](ARCHITECTURE.md).
-
-## Changes in This Fork
-
-This fork adds the following audio and MIDI features on top of the upstream
-MPX68K repository:
-
-- **Dual MIDI output**: CoreMIDI OUT-A and RS-232C MIDI OUT-B can be selected
-  independently. MIDI IN is not connected yet. RS-232C requires a physical
-  MIDI interface or electrical converter; do not connect a DIN MIDI cable
-  directly to the serial port.
-- **Timestamp-preserving MIDI scheduling**: MIDI events retain their host-clock
-  timestamps through parsing and are scheduled with a shared look-ahead for
-  CoreMIDI, Audio Unit, and serial output.
-- **Optional Audio Unit hosting**: A macOS Music Device Audio Unit can run in
-  parallel with the built-in emulator audio. The settings panel provides the
-  Audio Unit's output gain and opens its custom UI.
-- **ymfm YM2151 audio**: The active FM generator uses the pinned
-  `third_party/ymfm` submodule. YM2151 is rendered at the X68000 hardware-derived
-  62,500 Hz rate and downsampled to the host audio device rate.
-- **Low-latency built-in audio**: Direct HAL AudioUnit rendering is available
-  as the asynchronous low-latency path, with AudioQueue retained for
-  compatibility. The buffer-size setting supports 16, 32, 64 (default), 128,
-  256, and 512 frames.
-- **Live FM/ADPCM balance controls**: Independent FM and ADPCM trims are
-  available from -24 dB to +24 dB in 0.5 dB steps. They apply immediately
-  without reinitializing audio and are saved between launches; for example,
-  ADPCM -6 dB and FM +6 dB can be selected directly in the settings panel.
 
 ## Recent Updates
 
