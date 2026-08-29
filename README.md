@@ -342,6 +342,33 @@ MPX68K uses a multi-layered architecture that bridges modern Swift UI frameworks
 
 For detailed architecture documentation with diagrams, see [ARCHITECTURE.md](ARCHITECTURE.md).
 
+## Changes in This Fork
+
+This fork adds the following audio and MIDI features on top of the upstream
+MPX68K repository:
+
+- **Dual MIDI output**: CoreMIDI OUT-A and RS-232C MIDI OUT-B can be selected
+  independently. MIDI IN is not connected yet. RS-232C requires a physical
+  MIDI interface or electrical converter; do not connect a DIN MIDI cable
+  directly to the serial port.
+- **Timestamp-preserving MIDI scheduling**: MIDI events retain their host-clock
+  timestamps through parsing and are scheduled with a shared look-ahead for
+  CoreMIDI, Audio Unit, and serial output.
+- **Optional Audio Unit hosting**: A macOS Music Device Audio Unit can run in
+  parallel with the built-in emulator audio. The settings panel provides the
+  Audio Unit's output gain and opens its custom UI.
+- **ymfm YM2151 audio**: The active FM generator uses the pinned
+  `third_party/ymfm` submodule. YM2151 is rendered at the X68000 hardware-derived
+  62,500 Hz rate and downsampled to the host audio device rate.
+- **Low-latency built-in audio**: Direct HAL AudioUnit rendering is available
+  as the asynchronous low-latency path, with AudioQueue retained for
+  compatibility. The buffer-size setting supports 16, 32, 64 (default), 128,
+  256, and 512 frames.
+- **Live FM/ADPCM balance controls**: Independent FM and ADPCM trims are
+  available from -24 dB to +24 dB in 0.5 dB steps. They apply immediately
+  without reinitializing audio and are saved between launches; for example,
+  ADPCM -6 dB and FM +6 dB can be selected directly in the settings panel.
+
 ## Recent Updates
 
 ### Version 4.2
