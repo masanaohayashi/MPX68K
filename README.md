@@ -14,9 +14,6 @@ MPX68K repository:
 
 - **Dual MIDI output**: CoreMIDI OUT-A and RS-232C MIDI OUT-B can be selected
   independently. MIDI IN is not connected yet.
-- **Timestamp-preserving MIDI scheduling**: MIDI events retain their host-clock
-  timestamps through parsing and are scheduled with a shared look-ahead for
-  CoreMIDI, Audio Unit, and serial output.
 - **Optional Audio Unit instruments**: Install a MIDI-capable macOS Music
   Device Audio Unit, open **MPX68K → MIDI & Audio Unit…**, press **Refresh**,
   select the instrument, and enable **Use Audio Unit**. The panel also opens
