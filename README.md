@@ -1,7 +1,7 @@
 # MPX68K
 
 A Sharp X68000 computer emulator for macOS platforms, based on the px68k emulator core.
-This repository is indirectly a fork of Mr. Hissorii's [px68k](https://github.com/hissorii/px68k). Based on his source code, [Goroman](https://github.com/GOROman) converted it for iOS, and I made it works on MacOS.
+This repository is indirectly a fork of Mr. Hissorii's [px68k](https://github.com/hissorii/px68k). Based on that source code, [Goroman](https://github.com/GOROman) converted it for iOS, and [YosAwed](https://github.com/YosAwed) adapted it for macOS.
 
 ## Overview
 
