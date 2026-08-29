@@ -148,6 +148,7 @@ private final class ScreenRecorder {
         append(initialFrame)
         appendSilentAudio(frameCount: max(1, audioSampleRate / 20))
 
+        AudioStream.recordingTapSampleRate = audioSampleRate
         AudioStream.recordingTap = { [weak self] samples, frameCount, sampleRate in
             guard sampleRate == self?.audioSampleRate else { return }
             self?.appendAudio(samples, frameCount: frameCount)
@@ -2184,7 +2185,7 @@ private final class MPX68KGameSceneReference {
 final class MIDIAndAudioSettingsWindowController: NSWindowController {
     convenience init(gameScene: GameScene) {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 640, height: 600),
+            contentRect: NSRect(x: 0, y: 0, width: 640, height: 700),
             styleMask: [.titled, .closable, .resizable],
             backing: .buffered,
             defer: false
@@ -2250,6 +2251,8 @@ private struct MIDIAndAudioSettingsPanel: View {
     @State private var useAudioUnit: Bool
     @State private var selectedAudioUnitID: String
     @State private var audioUnitGainDB: Double
+    @State private var internalAudioMode: MPX68KInternalAudioRenderMode
+    @State private var internalAudioBufferFrames: Int
     @State private var isApplyingAudioUnit: Bool
     @State private var midiDestinations: [MPX68KMIDIDestination]
     @State private var serialDevices: [MPX68KRS232CDevice]
@@ -2263,6 +2266,8 @@ private struct MIDIAndAudioSettingsPanel: View {
             ?? MPX68KMIDIOutputSettings()
         let audioSettings = sceneReference.scene?.currentAudioUnitSettings()
             ?? MPX68KAudioUnitSettings()
+        let internalAudioSettings = sceneReference.scene?.currentInternalAudioSettings()
+            ?? MPX68KInternalAudioSettings()
         let destinations = sceneReference.scene?.availableMIDIDestinations() ?? []
         let devices = sceneReference.scene?.availableRS232CDevices() ?? []
         let units = sceneReference.scene?.availableAudioUnits() ?? []
@@ -2276,6 +2281,8 @@ private struct MIDIAndAudioSettingsPanel: View {
         _useAudioUnit = State(initialValue: audioSettings.enabled)
         _selectedAudioUnitID = State(initialValue: audioSettings.componentID ?? "")
         _audioUnitGainDB = State(initialValue: audioSettings.gainDB)
+        _internalAudioMode = State(initialValue: internalAudioSettings.mode)
+        _internalAudioBufferFrames = State(initialValue: internalAudioSettings.bufferFrames)
         _isApplyingAudioUnit = State(initialValue: audioSettings.enabled)
         _midiDestinations = State(initialValue: destinations)
         _serialDevices = State(initialValue: devices)
@@ -2309,6 +2316,8 @@ private struct MIDIAndAudioSettingsPanel: View {
                 VStack(alignment: .leading, spacing: 20) {
                     midiOutputSection
                     Divider()
+                    builtInAudioSection
+                    Divider()
                     audioUnitSection
 
                     if !statusMessage.isEmpty {
@@ -2321,7 +2330,7 @@ private struct MIDIAndAudioSettingsPanel: View {
                 .padding(24)
             }
         }
-        .frame(width: 640, height: 600)
+        .frame(width: 640, height: 700)
         .onChange(of: useCoreMIDI) { _ in applyMIDISettings() }
         .onChange(of: selectedCoreMIDIID) { _ in applyMIDISettings() }
         .onChange(of: useRS232C) { _ in applyMIDISettings() }
@@ -2329,10 +2338,39 @@ private struct MIDIAndAudioSettingsPanel: View {
         .onChange(of: useAudioUnit) { _ in applyAudioUnitSettings() }
         .onChange(of: selectedAudioUnitID) { _ in applyAudioUnitSettings() }
         .onChange(of: audioUnitGainDB) { _ in applyAudioUnitSettings() }
+        .onChange(of: internalAudioMode) { _ in applyInternalAudioSettings() }
+        .onChange(of: internalAudioBufferFrames) { _ in applyInternalAudioSettings() }
         .onAppear {
             if useAudioUnit {
                 applyAudioUnitSettings()
             }
+        }
+    }
+
+    private var builtInAudioSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("BUILT-IN AUDIO")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(.secondary)
+
+            Picker("Render path", selection: $internalAudioMode) {
+                ForEach(MPX68KInternalAudioRenderMode.allCases) { mode in
+                    Text(mode.displayName).tag(mode)
+                }
+            }
+
+            Picker("Audio buffer", selection: $internalAudioBufferFrames) {
+                ForEach(MPX68KInternalAudioSettings.bufferFrameOptions, id: \.self) { frames in
+                    Text("\(frames) samples").tag(frames)
+                }
+            }
+
+            Text(
+                "YM2151 runs at 62,500 Hz internally and is downsampled to the audio device rate. "
+                + "Direct AudioUnit is the low-latency path; AudioQueue is the compatibility path."
+            )
+                .font(.system(size: 12))
+                .foregroundColor(.secondary)
         }
     }
 
@@ -2476,6 +2514,19 @@ private struct MIDIAndAudioSettingsPanel: View {
                 }
                 statusMessage = error ?? "Audio Unit settings saved"
             }
+        }
+    }
+
+    private func applyInternalAudioSettings() {
+        guard let scene = sceneReference.scene else { return }
+        let settings = MPX68KInternalAudioSettings(
+            mode: internalAudioMode,
+            bufferFrames: internalAudioBufferFrames
+        )
+        if let error = scene.applyInternalAudioSettings(settings) {
+            statusMessage = error
+        } else {
+            statusMessage = "Built-in audio settings saved"
         }
     }
 

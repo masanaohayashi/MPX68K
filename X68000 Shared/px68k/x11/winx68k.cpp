@@ -1136,8 +1136,11 @@ int original_main(int argc, const char *argv[], const long samplingrate )
         return 1;
     }
 
-    ADPCM_Init(Config.SampleRate);
     OPM_Init(4000000, Config.SampleRate);
+    // The X68000's YM2151 is clocked at 4 MHz. ymfm therefore produces its
+    // native 62.5 kHz stream; the platform audio backend downsamples it to
+    // the host device rate after the emulator-side mix.
+    ADPCM_Init((DWORD)OPM_GetNativeSampleRate());
     
     FDD_Init();
     SysPort_Init();

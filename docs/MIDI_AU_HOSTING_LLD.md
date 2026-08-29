@@ -484,46 +484,47 @@ emulator hsync
 ```text
 emulator hsync
   -> AudioRenderCore.produce(nativeFrames)
-  -> ADPCM_Update / OPM_Update
-  -> int32 mix + compatibility clip
+  -> ADPCM_Update / OPM_GenerateNative (ymfm YM2151)
+  -> int32 mix + int16 clip
   -> native PCM SPSC ring
 
-AVAudioSourceNode render
-  -> AudioRenderCore.consumeFloat32(hostFrames)
-  -> fixed-point resampler
-  -> Float32 non-interleaved stereo output
+Direct HAL AudioUnit or AudioQueue render
+  -> AudioRenderCore.consumeInt16/consumeFloat32(hostFrames)
+  -> fixed-point linear resampler (62.5 kHz -> host rate)
+  -> host stereo output
 ```
 
 Audio callback側で不足分を`DSound_Send()`してエミュレータ状態を変更する処理は廃止する。
+X68000のYM2151は4 MHzで動作するため、ymfmの`2 x 32`分周からnative rateは
+62,500 Hzになる。AudioUnit/AudioQueueのバッファ設定はnative生成とは分離し、
+macOSではDirect HAL AudioUnitを既定の64 frames、16/32/128/256/512 framesも
+選択可能とする。
 
 ### 5.2 C interface
 
 ```c
-typedef struct {
-    uint32_t nativeSampleRate;
-    uint32_t hostSampleRate;
-    uint32_t channels;             // 2
-    float emulatorGain;
-} X68AudioRenderConfig;
-
-typedef struct {
-    uint64_t producedFrames;
-    uint64_t consumedFrames;
-    uint32_t queuedFrames;
-    uint32_t underruns;
-    uint32_t overruns;
-} X68AudioRenderStats;
-
-int X68000_AudioRenderInit(const X68AudioRenderConfig *config);
+void X68000_AudioRenderReset(void);
+void X68000_AudioRenderSetHostRate(uint32_t hostRate);
+uint32_t X68000_AudioRenderNativeSampleRate(void);
 void X68000_AudioRenderProduce(uint32_t nativeFrames);
 void X68000_AudioRenderConsumeFloat32(float *left,
                                       float *right,
                                       uint32_t hostFrames);
-void X68000_AudioRenderReset(void);
-void X68000_AudioRenderGetStats(X68AudioRenderStats *stats);
+void X68000_AudioRenderConsumeInterleavedFloat32(float *buffer,
+                                                 uint32_t hostFrames);
+void X68000_AudioRenderConsumeInt16(int16_t *buffer,
+                                    uint32_t hostFrames);
+void X68000_AudioRenderCaptureEnable(int enabled);
+void X68000_AudioRenderCapture(const int16_t *buffer,
+                               uint32_t frames);
+uint32_t X68000_AudioRenderCaptureRead(int16_t *buffer,
+                                       uint32_t maximumFrames);
 ```
 
-`X68000_AudioRenderProduce()`は`DSound_Send0()`から呼ぶ。OPM/ADPCMの既存stateを他threadから触らない。`ConsumeFloat32()`はAVAudioSourceNodeのrender blockからのみ呼ぶ。
+`X68000_AudioRenderProduce()`は`DSound_Send0()`から呼ぶ。OPM/ADPCMの既存stateを他threadから触らない。
+`Consume*()`はAudioUnit/AudioQueueのrender callbackからのみ呼び、callback側でSwift
+closureやエミュレータstateへ触れない。録音が有効な場合もcallbackは固定長のC ringへ
+コピーするだけで、AVAssetWriterへの投入は別のcontrol queueで行う。
 
 ### 5.3 Mixとlevel
 
@@ -560,16 +561,17 @@ consumer: audio render thread
 
 `volatile`だけではSPSCのmemory orderingを保証できない。C11 atomic、または既存プロジェクトで利用可能なC++ atomicを使用する。
 
-### 5.5 AVAudioSourceNode
+### 5.5 Host render callback
 
-source nodeのrender blockは次だけを行う。
+Direct HAL AudioUnitおよび互換AudioQueueのrender callbackは次だけを行う。
 
 1. `AudioBufferList`のchannel layoutを検査する。
-2. `X68000_AudioRenderConsumeFloat32()`を呼ぶ。
+2. `X68000_AudioRenderConsumeInt16()`（またはFloat32版）を呼ぶ。
 3. frameCount未満しか得られなければ残りをzero-fillする。
 4. OSStatusを返す。
 
 buffer pointerがnil、channel数が想定外、frameCountが上限超過の場合もzero-fillしてカウンタを増やす。ログや再構成はcontrol queueへ通知する。
+録音tapはcallbackから直接呼ばず、固定長capture ringを経由してcontrol queueから消費する。
 
 ## 6. ClockMapper
 
@@ -637,7 +639,8 @@ final class AudioGraphController {
 prepareの順序:
 
 1. output nodeからhost sample rate/channel数を取得する。
-2. `X68000_AudioRenderInit`へnative/host sample rateとchannel数を渡し、ringとresamplerを初期化する。
+2. `X68000_AudioRenderReset`と`X68000_AudioRenderSetHostRate`へnative/host
+   sample rateを渡し、ringとresamplerを初期化する。
 3. Float32 non-interleavedのsource formatを作る。
 4. source nodeとemulator mixerをattach/connectする。
 5. main mixerを取得してsource busを接続する。

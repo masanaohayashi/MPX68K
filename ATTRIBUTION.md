@@ -40,6 +40,16 @@ provenance of the third-party code vendored in this repository.
   (ADPCM-A), DMP-SOFT (OPNB), and KAJA (test program). fmgen is distributed
   under cisc's terms as stated in the upstream distribution.
 
+## ymfm — YM2151/OPM FM core
+
+- **Location**: `third_party/ymfm/` (git submodule; used by
+  `X68000 Shared/px68k/fmgen/fmg_wrap.cpp`)
+- **Upstream**: <https://github.com/aaronsgiles/ymfm>
+- **Author**: Aaron Giles and contributors
+- **License**: BSD 3-Clause License, as provided by the submodule.
+- **Notes**: The wrapper uses ymfm's YM2151 implementation for the X68000's
+  4 MHz OPM clock and keeps the older fmgen sources for source compatibility.
+
 ## win32api compatibility layer / dosio
 
 - **Location**: `X68000 Shared/px68k/win32api/`

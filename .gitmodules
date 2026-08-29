@@ -1,0 +1,3 @@
+[submodule "third_party/ymfm"]
+	path = third_party/ymfm
+	url = https://github.com/aaronsgiles/ymfm.git

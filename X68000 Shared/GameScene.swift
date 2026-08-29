@@ -25,7 +25,7 @@ extension Notification.Name {
 class GameScene: SKScene {
     
     private var clockMHz: Int = 24
-    private var samplingRate: Int = 22050
+    private var samplingRate: Int = 48000
     private var vsync: Bool = true
     
     // Input mode management
@@ -136,8 +136,11 @@ class GameScene: SKScene {
     private let audioUnitEnabledDefaultsKey = "AudioUnitOutput.Enabled"
     private let audioUnitIDDefaultsKey = "AudioUnitOutput.ComponentID"
     private let audioUnitGainDefaultsKey = "AudioUnitOutput.GainDB"
+    private let internalAudioModeDefaultsKey = "InternalAudio.RenderMode"
+    private let internalAudioBufferFramesDefaultsKey = "InternalAudio.BufferFrames"
     private var midiOutputSettings = MPX68KMIDIOutputSettings()
     private var audioUnitSettings = MPX68KAudioUnitSettings()
+    private var internalAudioSettings = MPX68KInternalAudioSettings()
     #endif
     
     private var devices: [X68Device] = []
@@ -1073,7 +1076,14 @@ class GameScene: SKScene {
         if view?.preferredFramesPerSecond == 120 && self.vsync == false {
             // sample *= 2
         }
+        #if os(macOS)
+        let stream = AudioStream(
+            samplingrate: sample,
+            internalAudioSettings: internalAudioSettings
+        )
+        #else
         let stream = AudioStream(samplingrate: sample)
+        #endif
         self.audioStream = stream
         #if os(macOS)
         midiController.setAudioUnitSender { [weak stream] event, hostTime in
@@ -1668,7 +1678,7 @@ class GameScene: SKScene {
     }
 
     var audioSampleRateForRecording: Int {
-        samplingRate
+        audioStream?.outputSampleRate ?? samplingRate
     }
     #endif
     
@@ -1758,6 +1768,16 @@ class GameScene: SKScene {
             componentID: defaults.string(forKey: audioUnitIDDefaultsKey),
             gainDB: gain
         )
+
+        let renderMode = defaults.string(forKey: internalAudioModeDefaultsKey)
+            .flatMap(MPX68KInternalAudioRenderMode.init(rawValue:))
+            ?? .asynchronous
+        let bufferFrames = (defaults.object(forKey: internalAudioBufferFramesDefaultsKey)
+            as? NSNumber)?.intValue ?? 64
+        internalAudioSettings = MPX68KInternalAudioSettings(
+            mode: renderMode,
+            bufferFrames: bufferFrames
+        )
     }
 
     func currentMIDIOutputSettings() -> MPX68KMIDIOutputSettings {
@@ -1766,6 +1786,10 @@ class GameScene: SKScene {
 
     func currentAudioUnitSettings() -> MPX68KAudioUnitSettings {
         audioUnitSettings
+    }
+
+    func currentInternalAudioSettings() -> MPX68KInternalAudioSettings {
+        internalAudioSettings
     }
 
     func availableMIDIDestinations() -> [MPX68KMIDIDestination] {
@@ -1778,6 +1802,28 @@ class GameScene: SKScene {
 
     func availableAudioUnits() -> [MPX68KAudioUnitDescriptor] {
         AudioStream.availableAudioUnits()
+    }
+
+    @discardableResult
+    func applyInternalAudioSettings(_ settings: MPX68KInternalAudioSettings,
+                                    persist: Bool = true) -> String? {
+        let normalized = MPX68KInternalAudioSettings(
+            mode: settings.mode,
+            bufferFrames: settings.bufferFrames
+        )
+        guard let stream = audioStream else {
+            return "Audio stream is not ready"
+        }
+        let error = stream.applyInternalAudioSettings(normalized)
+        internalAudioSettings = normalized
+        if persist && error == nil {
+            userDefaults.set(normalized.mode.rawValue, forKey: internalAudioModeDefaultsKey)
+            userDefaults.set(normalized.bufferFrames, forKey: internalAudioBufferFramesDefaultsKey)
+        }
+        if let error = error {
+            warningLog("Built-in audio configuration: \(error)", category: .audio)
+        }
+        return error
     }
 
     @discardableResult

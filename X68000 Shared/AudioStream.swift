@@ -103,23 +103,13 @@ import AudioToolbox
 import AVFoundation
 import AppKit
 import CoreAudioKit
+import CoreAudio
 #endif
-
-func bridge<T : AnyObject>(_ obj : T) -> UnsafeRawPointer {
-    return UnsafeRawPointer(Unmanaged.passUnretained(obj).toOpaque())
-    // return unsafeAddressOf(obj) // ***
-}
-
-func bridge<T : AnyObject>(_ ptr : UnsafeRawPointer) -> T {
-    return Unmanaged<T>.fromOpaque(ptr).takeUnretainedValue()
-    // return unsafeBitCast(ptr, T.self) // ***
-}
 
 func outputCallback(_ data: UnsafeMutableRawPointer?, queue: AudioQueueRef, buffer: AudioQueueBufferRef) {
     
     let audioData = buffer.pointee.mAudioData
     let size = buffer.pointee.mAudioDataBytesCapacity / 4  // Size in 16-bit stereo frames
-    let stream: AudioStream? = data.map { bridge($0) }
     
     // Safety check for reasonable buffer size
     if size > 0 && size <= 8192 {
@@ -127,14 +117,13 @@ func outputCallback(_ data: UnsafeMutableRawPointer?, queue: AudioQueueRef, buff
         
         // Let the X68000 audio core fill the buffer directly
         X68000_AudioCallBack(mAudioDataPtr, UInt32(size))
-        stream?.tapRenderedAudio(audioData, frameCount: Int(size))
+        X68000_AudioRenderCapture(mAudioDataPtr, UInt32(size))
         
         buffer.pointee.mAudioDataByteSize = buffer.pointee.mAudioDataBytesCapacity
         AudioQueueEnqueueBuffer(queue, buffer, 0, nil)
     } else {
         // Fallback: clear and enqueue if size is invalid
         memset(audioData, 0, Int(buffer.pointee.mAudioDataBytesCapacity))
-        stream?.tapRenderedAudio(audioData, frameCount: Int(size))
         buffer.pointee.mAudioDataByteSize = buffer.pointee.mAudioDataBytesCapacity
         AudioQueueEnqueueBuffer(queue, buffer, 0, nil)
     }
@@ -142,26 +131,49 @@ func outputCallback(_ data: UnsafeMutableRawPointer?, queue: AudioQueueRef, buff
 
 
 class AudioStream {
-    static var recordingTap: ((UnsafeRawPointer, Int, Int) -> Void)?
+    private static let recordingTapLock = NSLock()
+    private static let recordingPumpQueue = DispatchQueue(label: "MPX68K.AudioStream.recording")
+    private static var recordingPumpTimer: DispatchSourceTimer?
+    private static var recordingBuffer = [Int16](repeating: 0, count: 2048 * 2)
+    static var recordingTapSampleRate = 48_000
+    static var recordingTap: ((UnsafeRawPointer, Int, Int) -> Void)? {
+        didSet {
+            if recordingTap == nil {
+                stopRecordingPump()
+            } else {
+                startRecordingPump()
+            }
+        }
+    }
 
     #if os(macOS)
     private let audioUnitHost = MPX68KAudioUnitHost()
+    private var directAudioUnitOutput: MPX68KDirectAudioUnitOutput?
     #endif
 
     var dataFormat:     AudioStreamBasicDescription
     var queue:          AudioQueueRef? = nil
 
-    var buffers =       [AudioQueueBufferRef?](repeating: nil, count: 4)  // Increased buffer count for stability
+    var buffers =       [AudioQueueBufferRef?](repeating: nil, count: 4)
 
     var bufferByteSize: UInt32
-    
 	var samplingrate = 22050
-	
-	init (samplingrate: Int) {
-		self.samplingrate = samplingrate
+    private var internalAudioSettings: MPX68KInternalAudioSettings
+    private var isInternalOutputRunning = false
+    private(set) var outputSampleRate = 22050
+
+    init(samplingrate: Int,
+         internalAudioSettings: MPX68KInternalAudioSettings = MPX68KInternalAudioSettings()) {
+        self.samplingrate = max(8_000, samplingrate)
+        self.internalAudioSettings = internalAudioSettings
+        self.outputSampleRate = self.samplingrate
+
+        #if os(macOS)
+        self.directAudioUnitOutput = nil
+        #endif
 
         dataFormat = AudioStreamBasicDescription(
-            mSampleRate:        Float64(samplingrate),
+            mSampleRate:        Float64(self.samplingrate),
             mFormatID:          kAudioFormatLinearPCM,
             mFormatFlags:       kAudioFormatFlagIsSignedInteger | kAudioFormatFlagIsPacked,
             mBytesPerPacket:    4,
@@ -172,76 +184,224 @@ class AudioStream {
             mReserved:          0
         )
 
-        // Calculate buffer size based on sample rate to provide ~100ms of audio buffer for stability
-        let bufferDurationSeconds: Float64 = 0.1  // 100ms for better stability and reduced stuttering
-        let framesPerBuffer = UInt32(Float64(samplingrate) * bufferDurationSeconds)
+        let framesPerBuffer = UInt32(internalAudioSettings.bufferFrames)
         bufferByteSize = framesPerBuffer * dataFormat.mBytesPerFrame
-        
-        debugLog("Audio buffer: \(framesPerBuffer) frames, \(bufferByteSize) bytes", category: .audio)
-//return;
-        AudioQueueNewOutput(
+
+        if let error = configureInternalOutput() {
+            errorLog("Built-in audio configuration: \(error)", category: .audio)
+        }
+
+    }
+
+    private static func startRecordingPump() {
+        recordingTapLock.lock()
+        defer { recordingTapLock.unlock() }
+        guard recordingPumpTimer == nil else { return }
+
+        X68000_AudioRenderCaptureEnable(1)
+        let timer = DispatchSource.makeTimerSource(queue: recordingPumpQueue)
+        timer.schedule(deadline: .now(),
+                       repeating: .milliseconds(10),
+                       leeway: .milliseconds(2))
+        timer.setEventHandler {
+            drainRecordingAudio()
+        }
+        recordingPumpTimer = timer
+        timer.resume()
+    }
+
+    private static func stopRecordingPump() {
+        recordingTapLock.lock()
+        let timer = recordingPumpTimer
+        recordingPumpTimer = nil
+        X68000_AudioRenderCaptureEnable(0)
+        recordingTapLock.unlock()
+        timer?.cancel()
+    }
+
+    private static func drainRecordingAudio() {
+        while true {
+            let frameCount = recordingBuffer.withUnsafeMutableBufferPointer { buffer in
+                guard let baseAddress = buffer.baseAddress else { return UInt32(0) }
+                return X68000_AudioRenderCaptureRead(baseAddress, 2048)
+            }
+            guard frameCount > 0 else { return }
+
+            recordingTapLock.lock()
+            let tap = recordingTap
+            let sampleRate = recordingTapSampleRate
+            recordingTapLock.unlock()
+            guard let tap = tap else { return }
+
+            recordingBuffer.withUnsafeBufferPointer { buffer in
+                guard let baseAddress = buffer.baseAddress else { return }
+                tap(UnsafeRawPointer(baseAddress), Int(frameCount), sampleRate)
+            }
+        }
+    }
+
+    private func configureInternalOutput() -> String? {
+        X68000_AudioRenderReset()
+
+        #if os(macOS)
+        if internalAudioSettings.mode == .asynchronous {
+            let output = MPX68KDirectAudioUnitOutput()
+            if let error = output.initialize(bufferFrames: internalAudioSettings.bufferFrames) {
+                directAudioUnitOutput = nil
+                outputSampleRate = samplingrate
+                X68000_AudioRenderSetHostRate(UInt32(samplingrate))
+                createAudioQueue()
+                return error
+            }
+
+            directAudioUnitOutput = output
+            outputSampleRate = Int(output.sampleRate.rounded())
+            X68000_AudioRenderSetHostRate(UInt32(outputSampleRate))
+            return nil
+        }
+        #endif
+
+        outputSampleRate = samplingrate
+        X68000_AudioRenderSetHostRate(UInt32(outputSampleRate))
+        createAudioQueue()
+        return nil
+    }
+
+    private func createAudioQueue() {
+        guard queue == nil else { return }
+
+        var createdQueue: AudioQueueRef?
+        let result = AudioQueueNewOutput(
             &dataFormat,
             outputCallback,
             unsafeBitCast(self, to: UnsafeMutableRawPointer.self),
-            nil,  // Use internal thread for better performance
-            nil,  // Use internal thread for better performance
+            nil,
+            nil,
             0,
-            &queue)
-        
-        // Set audio queue properties for better performance and stability
-        if let queue = queue {
-            // Disable level metering for better performance
-            var enableLevelMetering: UInt32 = 0
-            AudioQueueSetProperty(queue, kAudioQueueProperty_EnableLevelMetering, &enableLevelMetering, UInt32(MemoryLayout<UInt32>.size))
-        }
-        
-        load()
-    
-    }
-
-    func tapRenderedAudio(_ audioData: UnsafeMutableRawPointer?, frameCount: Int) {
-        guard frameCount > 0,
-              let audioData = audioData,
-              let recordingTap = AudioStream.recordingTap else {
+            &createdQueue)
+        guard result == noErr, let createdQueue = createdQueue else {
+            errorLog("Failed to create audio queue: \(result)", category: .audio)
             return
         }
+        queue = createdQueue
 
-        recordingTap(UnsafeRawPointer(audioData), frameCount, samplingrate)
+        var enableLevelMetering: UInt32 = 0
+        AudioQueueSetProperty(
+            createdQueue,
+            kAudioQueueProperty_EnableLevelMetering,
+            &enableLevelMetering,
+            UInt32(MemoryLayout<UInt32>.size)
+        )
+        load()
     }
 
-    func load()
-    {
+    private func disposeAudioQueue() {
         if let queue = self.queue {
-            
-            // Allocate and pre-fill all buffers
-            for i in 0..<buffers.count {
-                AudioQueueAllocateBuffer(queue, bufferByteSize, &buffers[i])
-                if let buffer = buffers[i] {
-                    // Pre-fill buffer with silence to ensure smooth startup
-                    memset(buffer.pointee.mAudioData, 0, Int(bufferByteSize))
-                    buffer.pointee.mAudioDataByteSize = bufferByteSize
-                    outputCallback(unsafeBitCast(self, to: UnsafeMutableRawPointer.self), queue: queue, buffer: buffer)
+
+            AudioQueueStop(queue, true)
+            AudioQueueFlush(queue)
+            for buffer in buffers {
+                if let buffer = buffer {
+                    AudioQueueFreeBuffer(queue, buffer)
                 }
             }
-            
-            // Flush any previous state and prime the queue
-            AudioQueueFlush(queue)
-            let primeResult = AudioQueuePrime(queue, 0, nil)
-            if primeResult != noErr {
-                errorLog("Failed to prime audio queue: \(primeResult)", category: .audio)
+            buffers = [AudioQueueBufferRef?](repeating: nil, count: buffers.count)
+            AudioQueueDispose(queue, true)
+            self.queue = nil
+        }
+    }
+
+    private func startInternalOutput() {
+        #if os(macOS)
+        if let directAudioUnitOutput = directAudioUnitOutput {
+            if let error = directAudioUnitOutput.start() {
+                errorLog("Failed to start direct AudioUnit: \(error)", category: .audio)
+                // A device can disappear or reject the requested period after
+                // initialization. Keep the emulator audible by falling back
+                // to the compatibility queue for this session.
+                directAudioUnitOutput.close()
+                self.directAudioUnitOutput = nil
+                outputSampleRate = samplingrate
+                X68000_AudioRenderSetHostRate(UInt32(samplingrate))
+                createAudioQueue()
+            } else {
+                isInternalOutputRunning = true
+                return
             }
+        }
+        #endif
+
+        guard let queue = self.queue else { return }
+        let result = AudioQueueStart(queue, nil)
+        if result != noErr {
+            errorLog("Failed to start audio queue: \(result)", category: .audio)
+        } else {
+            isInternalOutputRunning = true
+        }
+    }
+
+    private func stopInternalOutput() {
+        #if os(macOS)
+        if let directAudioUnitOutput = directAudioUnitOutput {
+            directAudioUnitOutput.stop()
+            isInternalOutputRunning = false
+            return
+        }
+        #endif
+
+        if let queue = self.queue {
+            let result = AudioQueueStop(queue, true)
+            if result != noErr {
+                errorLog("Failed to stop audio queue: \(result)", category: .audio)
+            }
+            isInternalOutputRunning = false
+        }
+    }
+
+    private func pauseInternalOutput() {
+        #if os(macOS)
+        if let directAudioUnitOutput = directAudioUnitOutput {
+            directAudioUnitOutput.pause()
+            isInternalOutputRunning = false
+            return
+        }
+        #endif
+
+        if let queue = self.queue {
+            let result = AudioQueuePause(queue)
+            if result != noErr {
+                errorLog("Failed to pause audio queue: \(result)", category: .audio)
+            }
+            isInternalOutputRunning = false
+        }
+    }
+
+    func load() {
+        guard let queue = self.queue else { return }
+
+        for i in 0..<buffers.count {
+            let result = AudioQueueAllocateBuffer(queue, bufferByteSize, &buffers[i])
+            guard result == noErr, let buffer = buffers[i] else {
+                errorLog("Failed to allocate audio queue buffer: \(result)", category: .audio)
+                continue
+            }
+            memset(buffer.pointee.mAudioData, 0, Int(bufferByteSize))
+            buffer.pointee.mAudioDataByteSize = bufferByteSize
+            outputCallback(unsafeBitCast(self, to: UnsafeMutableRawPointer.self),
+                           queue: queue,
+                           buffer: buffer)
+        }
+
+        let primeResult = AudioQueuePrime(queue, 0, nil)
+        if primeResult != noErr {
+            errorLog("Failed to prime audio queue: \(primeResult)", category: .audio)
         }
     }
 
     func play()
     {
         debugLog("Audio Play", category: .audio)
-        if let queue = self.queue {
-            let result = AudioQueueStart(queue, nil)
-            if result != noErr {
-                errorLog("Failed to start audio queue: \(result)", category: .audio)
-            }
-        }
+        startInternalOutput()
         #if os(macOS)
         audioUnitHost.play()
         #endif
@@ -250,12 +410,7 @@ class AudioStream {
     func stop()
     {
         debugLog("Audio Stop", category: .audio)
-        if let queue = self.queue {
-            let result = AudioQueueStop(queue, true)  // immediate stop
-            if result != noErr {
-                errorLog("Failed to stop audio queue: \(result)", category: .audio)
-            }
-        }
+        stopInternalOutput()
         #if os(macOS)
         audioUnitHost.stop()
         #endif
@@ -264,12 +419,7 @@ class AudioStream {
     func pause()
     {
         debugLog("Audio Pause", category: .audio)
-        if let queue = self.queue {
-            let result = AudioQueuePause(queue)
-            if result != noErr {
-                errorLog("Failed to pause audio queue: \(result)", category: .audio)
-            }
-        }
+        pauseInternalOutput()
         #if os(macOS)
         audioUnitHost.pause()
         #endif
@@ -278,31 +428,46 @@ class AudioStream {
     {
         debugLog("Audio Close", category: .audio)
 
-        if let queue = self.queue {
-            // Stop audio queue first
-            AudioQueueStop(queue, true)
-            
-            // Flush any remaining buffers
-            AudioQueueFlush(queue)
-            
-            // Free all buffers
-            for buffer in buffers {
-                if let buffer = buffer {
-                    AudioQueueFreeBuffer(queue, buffer)
-                }
-            }
-            
-            // Dispose of the queue
-            let result = AudioQueueDispose(queue, true)
-            if result != noErr {
-                errorLog("Failed to dispose audio queue: \(result)", category: .audio)
-            }
-            
-            self.queue = nil
-        }
+        #if os(macOS)
+        directAudioUnitOutput?.close()
+        directAudioUnitOutput = nil
+        #endif
+        disposeAudioQueue()
+        isInternalOutputRunning = false
+        X68000_AudioRenderReset()
         #if os(macOS)
         audioUnitHost.close()
         #endif
+    }
+
+    @discardableResult
+    func applyInternalAudioSettings(_ settings: MPX68KInternalAudioSettings) -> String? {
+        let wasRunning = isInternalOutputRunning
+        if wasRunning {
+            stopInternalOutput()
+        }
+
+        // Always dispose the old queue before rebuilding the selected path.
+        // AudioQueueStop flushes its enqueued buffers; retaining that queue
+        // would make a later compatibility-mode restart begin with no buffers.
+        #if os(macOS)
+        directAudioUnitOutput?.stop()
+        #endif
+        disposeAudioQueue()
+
+        #if os(macOS)
+        directAudioUnitOutput?.close()
+        directAudioUnitOutput = nil
+        #endif
+
+        internalAudioSettings = settings
+        bufferByteSize = UInt32(settings.bufferFrames) * dataFormat.mBytesPerFrame
+        let error = configureInternalOutput()
+
+        if wasRunning {
+            startInternalOutput()
+        }
+        return error
     }
 
     #if os(macOS)
@@ -328,6 +493,324 @@ class AudioStream {
 }
 
 #if os(macOS)
+
+private final class MPX68KDirectAudioUnitOutput {
+    private var audioUnit: AudioUnit?
+    private var configuredDevice: AudioDeviceID?
+    private var previousDeviceBufferFrames: UInt32?
+    private(set) var sampleRate: Double = 48_000.0
+    private(set) var isRunning = false
+
+    deinit {
+        close()
+    }
+
+    func initialize(bufferFrames: Int) -> String? {
+        guard audioUnit == nil else { return nil }
+
+        guard let device = Self.defaultOutputDevice() else {
+            return "No default macOS audio output device is available"
+        }
+
+        var description = AudioComponentDescription(
+            componentType: kAudioUnitType_Output,
+            componentSubType: kAudioUnitSubType_HALOutput,
+            componentManufacturer: kAudioUnitManufacturer_Apple,
+            componentFlags: 0,
+            componentFlagsMask: 0
+        )
+        guard let component = AudioComponentFindNext(nil, &description) else {
+            return "HAL output AudioUnit is not available"
+        }
+
+        var createdUnit: AudioUnit?
+        let createStatus = AudioComponentInstanceNew(component, &createdUnit)
+        guard createStatus == noErr, let unit = createdUnit else {
+            return Self.statusMessage("Cannot create HAL output AudioUnit", status: createStatus)
+        }
+
+        var keepUnit = false
+        defer {
+            if !keepUnit {
+                AudioComponentInstanceDispose(unit)
+            }
+        }
+
+        var enableOutput: UInt32 = 1
+        var status = AudioUnitSetProperty(
+            unit,
+            kAudioOutputUnitProperty_EnableIO,
+            kAudioUnitScope_Output,
+            0,
+            &enableOutput,
+            UInt32(MemoryLayout<UInt32>.size)
+        )
+        guard status == noErr else {
+            return Self.statusMessage("Cannot enable HAL output", status: status)
+        }
+
+        var disableInput: UInt32 = 0
+        status = AudioUnitSetProperty(
+            unit,
+            kAudioOutputUnitProperty_EnableIO,
+            kAudioUnitScope_Input,
+            1,
+            &disableInput,
+            UInt32(MemoryLayout<UInt32>.size)
+        )
+        guard status == noErr else {
+            return Self.statusMessage("Cannot disable HAL input", status: status)
+        }
+
+        var selectedDevice = device
+        status = AudioUnitSetProperty(
+            unit,
+            kAudioOutputUnitProperty_CurrentDevice,
+            kAudioUnitScope_Global,
+            0,
+            &selectedDevice,
+            UInt32(MemoryLayout<AudioDeviceID>.size)
+        )
+        guard status == noErr else {
+            return Self.statusMessage("Cannot select the default audio device", status: status)
+        }
+
+        configuredDevice = device
+        previousDeviceBufferFrames = Self.deviceBufferSize(device)
+        let bufferStatus = Self.setDeviceBufferSize(UInt32(bufferFrames), device: device)
+        guard bufferStatus == noErr else {
+            return Self.statusMessage("Cannot set audio device buffer size", status: bufferStatus)
+        }
+
+        sampleRate = Self.deviceSampleRate(device) ?? 48_000.0
+        let format = AudioStreamBasicDescription(
+            mSampleRate: sampleRate,
+            mFormatID: kAudioFormatLinearPCM,
+            mFormatFlags: kAudioFormatFlagsNativeEndian
+                | kAudioFormatFlagIsSignedInteger
+                | kAudioFormatFlagIsPacked,
+            mBytesPerPacket: 4,
+            mFramesPerPacket: 1,
+            mBytesPerFrame: 4,
+            mChannelsPerFrame: 2,
+            mBitsPerChannel: 16,
+            mReserved: 0
+        )
+        var clientFormat = format
+        status = AudioUnitSetProperty(
+            unit,
+            kAudioUnitProperty_StreamFormat,
+            kAudioUnitScope_Input,
+            0,
+            &clientFormat,
+            UInt32(MemoryLayout<AudioStreamBasicDescription>.size)
+        )
+        guard status == noErr else {
+            return Self.statusMessage("Cannot configure HAL output format", status: status)
+        }
+
+        var maximumFrames = max(UInt32(bufferFrames),
+                                Self.deviceBufferSize(device) ?? UInt32(bufferFrames))
+        status = AudioUnitSetProperty(
+            unit,
+            kAudioUnitProperty_MaximumFramesPerSlice,
+            kAudioUnitScope_Global,
+            0,
+            &maximumFrames,
+            UInt32(MemoryLayout<UInt32>.size)
+        )
+        guard status == noErr else {
+            return Self.statusMessage("Cannot configure AudioUnit buffer size", status: status)
+        }
+
+        var callback = AURenderCallbackStruct(
+            inputProc: mpx68kDirectAudioRenderCallback,
+            inputProcRefCon: Unmanaged.passUnretained(self).toOpaque()
+        )
+        status = AudioUnitSetProperty(
+            unit,
+            kAudioUnitProperty_SetRenderCallback,
+            kAudioUnitScope_Input,
+            0,
+            &callback,
+            UInt32(MemoryLayout<AURenderCallbackStruct>.size)
+        )
+        guard status == noErr else {
+            return Self.statusMessage("Cannot install AudioUnit render callback", status: status)
+        }
+
+        status = AudioUnitInitialize(unit)
+        guard status == noErr else {
+            return Self.statusMessage("Cannot initialize HAL output AudioUnit", status: status)
+        }
+
+        audioUnit = unit
+        keepUnit = true
+        X68000_AudioRenderSetHostRate(UInt32(sampleRate.rounded()))
+        return nil
+    }
+
+    func start() -> String? {
+        guard let audioUnit = audioUnit else {
+            return "HAL output AudioUnit is not initialized"
+        }
+        guard !isRunning else { return nil }
+
+        let status = AudioOutputUnitStart(audioUnit)
+        guard status == noErr else {
+            return Self.statusMessage("Cannot start HAL output AudioUnit", status: status)
+        }
+        isRunning = true
+        return nil
+    }
+
+    func stop() {
+        guard let audioUnit = audioUnit, isRunning else { return }
+        AudioOutputUnitStop(audioUnit)
+        isRunning = false
+    }
+
+    func pause() {
+        stop()
+    }
+
+    func close() {
+        if let audioUnit = audioUnit {
+            stop()
+            AudioUnitUninitialize(audioUnit)
+            AudioComponentInstanceDispose(audioUnit)
+            self.audioUnit = nil
+        }
+        if let device = configuredDevice,
+           let previousDeviceBufferFrames = previousDeviceBufferFrames {
+            _ = Self.setDeviceBufferSize(previousDeviceBufferFrames, device: device)
+        }
+        configuredDevice = nil
+        previousDeviceBufferFrames = nil
+    }
+
+    fileprivate func render(frameCount: UInt32,
+                             audioBufferList: UnsafeMutablePointer<AudioBufferList>?) -> OSStatus {
+        guard let audioBufferList = audioBufferList else { return noErr }
+        let buffers = UnsafeMutableAudioBufferListPointer(audioBufferList)
+        guard !buffers.isEmpty else { return noErr }
+
+        // The client format above is interleaved signed 16-bit stereo, so the
+        // HAL normally supplies one buffer. Keep a safe fallback for a device
+        // that reports a deinterleaved list rather than writing past it.
+        guard buffers.count == 1,
+              let audioData = buffers[0].mData else {
+            for index in 0..<buffers.count {
+                if let audioData = buffers[index].mData {
+                    memset(audioData, 0, Int(buffers[index].mDataByteSize))
+                }
+            }
+            return noErr
+        }
+
+        let samples = audioData.assumingMemoryBound(to: Int16.self)
+        X68000_AudioRenderConsumeInt16(samples, frameCount)
+        X68000_AudioRenderCapture(samples, frameCount)
+        return noErr
+    }
+
+    private static func defaultOutputDevice() -> AudioDeviceID? {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultOutputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var device = AudioDeviceID(kAudioObjectUnknown)
+        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+        let status = AudioObjectGetPropertyData(
+            AudioObjectID(kAudioObjectSystemObject),
+            &address,
+            0,
+            nil,
+            &size,
+            &device
+        )
+        guard status == noErr, device != AudioDeviceID(kAudioObjectUnknown) else {
+            return nil
+        }
+        return device
+    }
+
+    private static func deviceSampleRate(_ device: AudioDeviceID) -> Double? {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyNominalSampleRate,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var sampleRate = 0.0
+        var size = UInt32(MemoryLayout<Double>.size)
+        let status = AudioObjectGetPropertyData(
+            device,
+            &address,
+            0,
+            nil,
+            &size,
+            &sampleRate
+        )
+        guard status == noErr, sampleRate >= 8_000.0, sampleRate <= 192_000.0 else {
+            return nil
+        }
+        return sampleRate
+    }
+
+    private static func deviceBufferSize(_ device: AudioDeviceID) -> UInt32? {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyBufferFrameSize,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        guard AudioObjectHasProperty(device, &address) else { return nil }
+
+        var frames = UInt32(0)
+        var size = UInt32(MemoryLayout<UInt32>.size)
+        let status = AudioObjectGetPropertyData(
+            device,
+            &address,
+            0,
+            nil,
+            &size,
+            &frames
+        )
+        return status == noErr ? frames : nil
+    }
+
+    private static func setDeviceBufferSize(_ frames: UInt32,
+                                            device: AudioDeviceID) -> OSStatus {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyBufferFrameSize,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        guard AudioObjectHasProperty(device, &address) else { return noErr }
+
+        var requestedFrames = frames
+        return AudioObjectSetPropertyData(
+            device,
+            &address,
+            0,
+            nil,
+            UInt32(MemoryLayout<UInt32>.size),
+            &requestedFrames
+        )
+    }
+
+    private static func statusMessage(_ action: String, status: OSStatus) -> String {
+        "\(action) (status \(status))"
+    }
+}
+
+private let mpx68kDirectAudioRenderCallback: AURenderCallback = {
+    inRefCon, _, _, _, frameCount, audioBufferList in
+    let output = Unmanaged<MPX68KDirectAudioUnitOutput>
+        .fromOpaque(inRefCon)
+        .takeUnretainedValue()
+    return output.render(frameCount: frameCount, audioBufferList: audioBufferList)
+}
 
 private final class MPX68KAudioUnitHost {
     private let engine = AVAudioEngine()

@@ -13,7 +13,7 @@ MPX68K provides authentic Sharp X68000 emulation with modern Swift UI frameworks
 - **X68000 Hardware Emulation**: CPU, sound, graphics, and I/O
 - **M68000 CPU**: Powered by C68K emulator core
 - **Adjustable Clock Speed**: 1 / 10 / 16 / 24 (default) / 40 / 50 MHz
-- **FM Sound Synthesis**: High-quality audio via fmgen (OPM + ADPCM)
+- **FM Sound Synthesis**: YMFM YM2151 (OPM) plus ADPCM audio
 - **MIDI Output**: External MIDI with configurable output delay and buffering
 - **Multiple Disk Formats**: Floppy (.dim, .xdf, .2hd, .d88, .hdm) and hard disk (.hdf, .hds)
 
@@ -104,8 +104,14 @@ You need Apple Developer Account for using XCode and certification.
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/YosAwed/MPX68K.git
+   git clone --recurse-submodules https://github.com/YosAwed/MPX68K.git
    cd MPX68K
+   ```
+
+   If the repository was cloned without `--recurse-submodules`, initialize the
+   bundled ymfm source before opening Xcode:
+   ```bash
+   git submodule update --init --recursive
    ```
 
 2. **Open in Xcode:**
@@ -118,14 +124,16 @@ You need Apple Developer Account for using XCode and certification.
    - Build and run (⌘+R)
 
 ### Dependencies
-The project includes a dependency on the c68k CPU emulator which is built automatically.
+The project includes the c68k CPU emulator and the ymfm YM2151 core. c68k is
+built automatically by the Xcode project; ymfm is pinned as the
+`third_party/ymfm` git submodule and must be initialized before building.
 
 ## Usage
 
 ### macOS Menu Reference
 
 #### MPX68K Menu
-- **MIDI & Audio Unit…**: Select CoreMIDI OUT-A, RS-232C MIDI OUT-B, and an optional Audio Unit instrument. The Audio Unit panel also provides its output gain and opens the instrument's custom UI.
+- **MIDI & Audio Unit…**: Select CoreMIDI OUT-A, RS-232C MIDI OUT-B, and an optional Audio Unit instrument. The Audio Unit panel also provides its output gain, opens the instrument's custom UI, and configures the built-in YM2151 render path and audio buffer size.
 
 #### FDD Menu
 - **Open Drive 0…** / **Open Drive 1…**: Insert a floppy image
@@ -162,7 +170,7 @@ The project includes a dependency on the c68k CPU emulator which is built automa
 - **Disk State Management → Save Current State / Clear Saved State / Show State Information**
 - **JoyportU Settings → Disabled / Notify Mode / Command Mode**
 
-The MIDI & Audio Unit panel keeps the existing emulator audio active while optionally hosting a macOS Music Device Audio Unit in parallel. CoreMIDI is OUT-A; RS-232C is OUT-B and uses a selected `/dev/cu.*` or `/dev/tty.*` device at MIDI's 31,250 baud, 8-N-1 framing. MIDI events retain their host-clock timing through the parser, and CoreMIDI/AU scheduling uses a shared look-ahead timeline. A physical RS-232C-to-MIDI electrical converter is required; a DIN MIDI cable must not be connected directly to the serial port. MIDI IN is not connected yet.
+The MIDI & Audio Unit panel keeps the emulator audio active while optionally hosting a macOS Music Device Audio Unit in parallel. CoreMIDI is OUT-A; RS-232C is OUT-B and uses a selected `/dev/cu.*` or `/dev/tty.*` device at MIDI's 31,250 baud, 8-N-1 framing. MIDI events retain their host-clock timing through the parser, and CoreMIDI/AU scheduling uses a shared look-ahead timeline. Built-in YM2151 audio is generated at the hardware-derived 62,500 Hz rate and downsampled to the host device; Direct AudioUnit is the low-latency asynchronous path, while AudioQueue is available for compatibility. A physical RS-232C-to-MIDI electrical converter is required; a DIN MIDI cable must not be connected directly to the serial port. MIDI IN is not connected yet.
 
 #### Joycard Input
 - **Arrow Keys** or **WASD**: 8-direction movement
@@ -319,7 +327,7 @@ MPX68K uses a multi-layered architecture that bridges modern Swift UI frameworks
 ### Language Stack
 - **Swift**: UI layer, device management, file system, logging infrastructure
 - **C**: Core emulation engine (CPU, hardware, memory management) 
-- **C++**: Sound generation (fmgen), emulation components
+- **C++**: YMFM sound generation, emulation components
 - **Objective-C**: Bridge layer for legacy compatibility
 
 ### Key Components
@@ -353,7 +361,7 @@ For detailed architecture documentation with diagrams, see [ARCHITECTURE.md](ARC
 #### Fixes & Improvements
 - **Mouse Reliability**: Capture stability, Y-inversion fix, drift/inertia tuning, and SCC compatibility mode for VS.X double-click
 - **Rendering**: Skip unchanged frames to reduce GPU load
-- **Audio**: ADPCM / OPM ring-buffer mixing rework, ADPCM timing refinement
+- **Audio**: YMFM YM2151 native-rate mixing, host-rate downsampling, and low-latency AudioUnit output
 - **Build System**: macOS deployment target lowered to 12.0, x86_64 re-enabled for Intel Macs
 - **Secure Restorable State**: Enabled on macOS
 - **Compiler Warnings**: Legacy dead-code SCSI helpers removed, keeping the build warning-free
@@ -366,7 +374,7 @@ MPX68K/
 ├── X68000 Shared/          # Cross-platform Swift code
 │   ├── px68k/              # C/C++ emulation core
 │   │   ├── x68k/           # X68000 hardware components
-│   │   ├── fmgen/          # FM sound synthesis (C++)
+│   │   ├── fmgen/          # YMFM OPM wrapper and legacy headers (C++)
 │   │   ├── m68000/         # CPU wrapper
 │   │   └── x11/            # Platform abstraction
 │   ├── *.swift             # Swift UI and business logic
@@ -432,7 +440,8 @@ See [LICENSE](LICENSE) for the license summary and [ATTRIBUTION.md](ATTRIBUTION.
 
 - **px68k** (hissorii/px68k) — upstream emulator core, derived from WinX68k by Kenjo (けろぴー).
 - **C68K** by Stephane Dallongeville — MC68000 CPU emulator, GPL-2.0-or-later (see `LICENSES/GPL-2.0.txt`).
-- **fmgen** by cisc — FM/PSG sound implementation.
+- **ymfm** by Aaron Giles — YM2151/OPM FM sound core, BSD 3-Clause;
+  included as the `third_party/ymfm` submodule.
 
 No SHARP ROMs are distributed. Users must supply legally-owned ROMs.
 
@@ -440,7 +449,7 @@ No SHARP ROMs are distributed. Users must supply legally-owned ROMs.
 
 - **px68k**: Original X68000 emulator core
 - **C68K**: M68000 CPU emulator
-- **fmgen**: FM sound synthesis library
+- **ymfm**: YM2151/OPM FM sound synthesis core
 - **Sharp**: Original X68000 computer system
 
 ## Links

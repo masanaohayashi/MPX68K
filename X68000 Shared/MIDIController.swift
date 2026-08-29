@@ -17,6 +17,41 @@ import Darwin
 /// A UInt8 array, usually 3 bytes long.
 public typealias MidiEvent = [UInt8]
 
+/// Selects how the macOS built-in emulator audio is handed to the device.
+/// The asynchronous path uses a direct AudioUnit callback and a lock-free
+/// native-rate ring; compatibility uses the AudioQueue backend.
+public enum MPX68KInternalAudioRenderMode: String, CaseIterable, Identifiable {
+    case asynchronous
+    case compatibility
+
+    public var id: String { rawValue }
+
+    public var displayName: String {
+        switch self {
+        case .asynchronous:
+            return "Direct AudioUnit (asynchronous)"
+        case .compatibility:
+            return "AudioQueue (compatibility)"
+        }
+    }
+}
+
+/// Settings for the built-in YM2151/ADPCM output path.
+public struct MPX68KInternalAudioSettings: Equatable {
+    public static let bufferFrameOptions = [16, 32, 64, 128, 256, 512]
+
+    public var mode: MPX68KInternalAudioRenderMode
+    public var bufferFrames: Int
+
+    public init(mode: MPX68KInternalAudioRenderMode = .asynchronous,
+                bufferFrames: Int = 64) {
+        self.mode = mode
+        self.bufferFrames = Self.bufferFrameOptions.contains(bufferFrames)
+            ? bufferFrames
+            : 64
+    }
+}
+
 #if os(macOS)
 
 /// A CoreMIDI destination that can be selected as OUT-A.

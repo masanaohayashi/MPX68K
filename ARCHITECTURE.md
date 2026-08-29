@@ -20,7 +20,7 @@ graph TB
     subgraph "C/C++ Emulation Core"
         PX68K[px68k Core<br/>X68000 Hardware]
         M68K[M68000 CPU Wrapper]
-        FMGen[fmgen<br/>FM Sound Engine]
+        YMFM[ymfm YM2151<br/>FM Sound Engine]
         X68KHW[X68000 Hardware<br/>FDC, SCSI, ADPCF, Graphics]
     end
     
@@ -46,13 +46,13 @@ graph TB
     FileSystem --> UTI
     
     AudioStream --> AVFoundation
-    AudioStream --> FMGen
+    AudioStream --> YMFM
     
     JoyCard --> GameplayKit
     JoyCard --> PX68K
     
     PX68K --> M68K
-    PX68K --> FMGen
+    PX68K --> YMFM
     PX68K --> X68KHW
     
     M68K --> C68K
@@ -168,7 +168,7 @@ graph TD
 ```mermaid
 graph TB
     subgraph "C++ Audio Generation"
-        FMGen[fmgen Engine<br/>FM Synthesis]
+        YMFM[ymfm YM2151<br/>FM Synthesis]
         ADPCM[ADPCM Audio]
         PCM[PCM Audio]
     end
@@ -188,11 +188,11 @@ graph TB
         AudioHW[Audio Hardware]
     end
     
-    OPM --> FMGen
+    OPM --> YMFM
     AudioHW --> ADPCM
     AudioHW --> PCM
     
-    FMGen --> AudioStream
+    YMFM --> AudioStream
     ADPCM --> AudioStream
     PCM --> AudioStream
     
@@ -200,7 +200,7 @@ graph TB
     AudioBuffer --> AVAudio
     AVAudio --> AudioOutput
     
-    style FMGen fill:#fce4ec
+    style YMFM fill:#fce4ec
     style AudioStream fill:#fff3e0
     style AVAudio fill:#e8f5e8
 ```
@@ -232,7 +232,9 @@ graph LR
 
 On macOS, `MIDIController` sends each parsed MIDI event to the selected CoreMIDI destination and, independently, to the selected RS-232C device. The C MIDI bridge records an Apple host-clock timestamp for every emitted byte; the Swift parser carries the first-byte timestamp through to the completed MIDI event. The serial transport uses a dedicated file descriptor and asynchronous transmit queue configured for 31,250 baud, 8-N-1. MIDI IN is intentionally not connected yet.
 
-The optional Audio Unit is hosted by a separate `AVAudioEngine`. CoreMIDI packet timestamps and the AU scheduler are both derived from the captured host-clock timeline with a short look-ahead, so frame-end MIDI draining does not collapse events to `now`. The AU host converts the scheduled host time to the output node's sample-time anchor; an immediate AU event is used only before that anchor exists or when an event has already become late. The existing physical MIDI output delay remains applied to OUT-A/OUT-B. RS-232C has no timestamped transport, so OUT-B waits until its host-time deadline before writing the bytes. The existing emulator `AudioQueue` remains active, so the AU output is parallel to the built-in emulator audio. Settings persist the selected Audio Unit, enabled state, and gain from -60 dB to 0 dB; the longer-term single post-mix graph and recording integration remains future work.
+The optional Audio Unit is hosted by a separate `AVAudioEngine`. CoreMIDI packet timestamps and the AU scheduler are both derived from the captured host-clock timeline with a short look-ahead, so frame-end MIDI draining does not collapse events to `now`. The AU host converts the scheduled host time to the output node's sample-time anchor; an immediate AU event is used only before that anchor exists or when an event has already become late. The existing physical MIDI output delay remains applied to OUT-A/OUT-B. RS-232C has no timestamped transport, so OUT-B waits until its host-time deadline before writing the bytes. Settings persist the selected Audio Unit, enabled state, and gain from -60 dB to 0 dB.
+
+The built-in YM2151 is implemented by the `third_party/ymfm` submodule. X68000 hardware uses a 4 MHz YM2151 clock, which produces a native 62,500 Hz stream (`4 MHz / (2 prescale × 32 operators)`). `dswin.c` mixes YMFM and ADPCM on the emulator timeline into a fixed SPSC ring, and `AudioStream` converts that stream to the host device rate. The default macOS path is a direct HAL AudioUnit with a 64-frame buffer; the settings panel also exposes 16, 32, 128, 256, and 512-frame choices plus an AudioQueue compatibility path. The render callback only consumes the ring and never advances emulator state.
 
 ## Input System Architecture
 

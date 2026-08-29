@@ -30,6 +30,16 @@ int X68000_GetImageInto(unsigned char* data, unsigned long capacityBytes);
 
 const int X68000_IsFrameDirty(void);
 void X68000_AudioCallBack(void* buffer, const unsigned int sample);
+void X68000_AudioRenderReset(void);
+void X68000_AudioRenderSetHostRate(unsigned int rate);
+unsigned int X68000_AudioRenderNativeSampleRate(void);
+void X68000_AudioRenderProduce(unsigned int frames);
+void X68000_AudioRenderConsumeFloat32(float* left, float* right, unsigned int frames);
+void X68000_AudioRenderConsumeInterleavedFloat32(float* buffer, unsigned int frames);
+void X68000_AudioRenderConsumeInt16(short* buffer, unsigned int frames);
+void X68000_AudioRenderCaptureEnable(int enabled);
+void X68000_AudioRenderCapture(const short* buffer, unsigned int frames);
+unsigned int X68000_AudioRenderCaptureRead(short* buffer, unsigned int maximumFrames);
 void X68000_Key_Down( unsigned int vkcode );
 void X68000_Key_Up( unsigned int vkcode );
 const int X68000_GetScreenWidth();

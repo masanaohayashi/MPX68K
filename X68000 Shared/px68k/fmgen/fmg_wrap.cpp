@@ -1,9 +1,19 @@
-// ciscタンノエロガゾウキボンヌを強引にけろぴーに繋ぐための
-// extern "C" の入れ方がきちゃなくてステキ（ぉ
+// YM2151 wrapper used by the X68000 core.
+//
+// The emulator historically used the old FMGen OPM implementation. The
+// actual X68000 sound chip is a YM2151 clocked at 4 MHz, so the ymfm OPM core
+// is used here and produces its native 62,500 Hz stream. The audio renderer
+// performs the host-rate conversion after the emulator has mixed its native
+// audio frames.
 
-// readme.txtに従って、改変点：
-//  - opna.cppにYMF288用のクラス追加してます。OPNAそのまんまだけどね（ほんとは正しくないがまあいいや）
-//  - 多分他は弄ってないはず……
+#include <cmath>
+#include <cstdint>
+#include <memory>
+
+// Keep the ymfm implementation in the source list that already builds this
+// wrapper. This avoids making the generated Xcode project depend on a source
+// file inside the submodule while still keeping ymfm itself as a submodule.
+#include "../../../third_party/ymfm/src/ymfm_opm.cpp"
 
 extern "C" {
 
@@ -16,203 +26,244 @@ extern "C" {
 #include "fdc.h"
 #include "fmg_wrap.h"
 
-#include "opm.h"
-};
+}
 
-class MyOPM : public FM::OPM
-{
+namespace {
+
+class MPX68KYM2151 final : public ymfm::ymfm_interface {
 public:
-	MyOPM();
-	virtual ~MyOPM() {}
-	void WriteIO(DWORD adr, BYTE data);
-	void Count2(DWORD clock);
+    explicit MPX68KYM2151(uint32_t clock)
+        : m_chip(*this), m_nativeRate(m_chip.sample_rate(clock)) {
+        m_chip.reset();
+    }
+
+    ymfm::ym2151& chip() { return m_chip; }
+    const ymfm::ym2151& chip() const { return m_chip; }
+
+    uint32_t nativeRate() const { return m_nativeRate; }
+
+    void reset() {
+        m_timerClocks[0] = -1;
+        m_timerClocks[1] = -1;
+        m_busyClocks = 0;
+        m_chip.reset();
+    }
+
+    void setVolume(BYTE volume) {
+        // Config.OPM_VOL uses the original 0..16 FMGen scale. Preserve its
+        // attenuation curve while applying it to ymfm's 16-bit DAC output.
+        if (volume == 0) {
+            m_volume = 0.0;
+            return;
+        }
+        const int attenuationDB = (16 - static_cast<int>(volume)) * 4;
+        m_volume = std::pow(10.0, -static_cast<double>(attenuationDB) / 20.0);
+    }
+
+    void generate(int* buffer, int length) {
+        if (!buffer || length <= 0) {
+            return;
+        }
+
+        for (int index = 0; index < length; ++index) {
+            ymfm::ym2151::output_data output;
+            m_chip.generate(&output, 1);
+            clockCallbacks();
+
+            buffer[index * 2] = static_cast<int>(std::lround(
+                static_cast<double>(output.data[0]) * m_volume));
+            buffer[index * 2 + 1] = static_cast<int>(std::lround(
+                static_cast<double>(output.data[1]) * m_volume));
+        }
+    }
+
+    void ymfm_external_write(ymfm::access_class type,
+                             uint32_t address,
+                             uint8_t data) override {
+        if (type != ymfm::ACCESS_IO || address != 0) {
+            return;
+        }
+
+        // YM2151 register 0x1B exposes CT1/CT2 on its two external output
+        // pins. ymfm passes those two bits as a compact value (data >> 6).
+        // CT1 controls the X68000 ADPCM clock and CT2 controls FDC ready.
+        ADPCM_SetClock(((data >> 1) & 1) << 2);
+        FDC_SetForceReady(data & 1);
+    }
+
+    void ymfm_set_timer(uint32_t timer,
+                        int32_t durationInClocks) override {
+        if (timer < 2) {
+            m_timerClocks[timer] = durationInClocks;
+        }
+    }
+
+    void ymfm_set_busy_end(uint32_t clocks) override {
+        m_busyClocks = clocks;
+    }
+
+    bool ymfm_is_busy() override {
+        return m_busyClocks > 0;
+    }
+
+    void ymfm_update_irq(bool asserted) override {
+        if (asserted) {
+            MFP_Int(12);
+        }
+    }
+
 private:
-	virtual void Intr(bool);
-	int CurReg;
-	DWORD CurCount;
+    void clockCallbacks() {
+        // One generated sample advances the OPM core by prescale*operators
+        // clocks: 2*32 = 64 for YM2151. Timers are serviced on the same
+        // timeline as the native audio stream.
+        constexpr int32_t clocksPerSample = 64;
+
+        if (m_busyClocks > 0) {
+            m_busyClocks = (m_busyClocks > clocksPerSample)
+                ? m_busyClocks - clocksPerSample
+                : 0;
+        }
+
+        for (uint32_t timer = 0; timer < 2; ++timer) {
+            if (m_timerClocks[timer] < 0) {
+                continue;
+            }
+
+            m_timerClocks[timer] -= clocksPerSample;
+            if (m_timerClocks[timer] <= 0) {
+                // fm_engine_base schedules the next period when the timer
+                // expires. Calling its public callback keeps YM2151 status,
+                // CSM, and IRQ handling inside ymfm's state machine.
+                m_engine->engine_timer_expired(timer);
+            }
+        }
+    }
+
+    ymfm::ym2151 m_chip;
+    uint32_t m_nativeRate;
+    int32_t m_timerClocks[2] = {-1, -1};
+    uint32_t m_busyClocks = 0;
+    double m_volume = 1.0;
 };
 
+std::unique_ptr<MPX68KYM2151> s_opm;
+int s_defaultNativeRate = 62500;
 
-MyOPM::MyOPM()
-{
-	CurReg = 0;
+static int clampSample(int value) {
+    if (value > 32767) {
+        return 32767;
+    }
+    if (value < -32768) {
+        return -32768;
+    }
+    return value;
 }
 
-#define FM_MIDI_OUT (0)
+} // namespace
 
-#if FM_MIDI_OUT
-extern "C" void X68000_AddMIDIBuffer( const BYTE data );
-static BYTE s_KeyCode[8];
-static BYTE s_old_KeyCode[8];
-static BYTE s_KF[8];
+extern "C" {
 
+int OPM_Init(int clock, int rate) {
+    (void)rate;
 
-static const char KeyCodeTable[] = {
-//    D#    E    F   F#    G   G#    A   A# B +1 C C# D....
-    0x00,0x01,0x02,0x04,0x05,0x06,0x08,0x09,    // D#
-    0x0a,0x0c,0x0d,0x0e,0x10,0x11,0x12,0x14,
-    0x15,0x16,0x18,0x19,0x1a,0x1c,0x1d,0x1e,
-    0x20,0x21,0x22,0x24,0x25,0x26,0x28,0x29,
-    0x2a,0x2c,0x2d,0x2e,0x30,0x31,0x32,0x34,
-    0x35,0x36,0x38,0x39,0x3a,0x3c,0x3d,0x3e,
-    0x40,0x41,0x42,0x44,0x45,0x46,0x48,0x49,
-    0x4a,0x4c,0x4d,0x4e,0x50,0x51,0x52,0x54,
-    0x55,0x56,0x58,0x59,0x5a,0x5c,0x5d,0x5e,
-    0x60,0x61,0x62,0x64,0x65,0x66,0x68,0x69,
-    0x6a,0x6c,0x6d,0x6e,0x70,0x71,0x72,0x74,
-    0x75,0x76,0x78,0x79,0x7a,0x7c,0x7d,0x7e,
-};
-#endif
+    const uint32_t chipClock = (clock > 0) ? static_cast<uint32_t>(clock) : 4000000;
+    std::unique_ptr<MPX68KYM2151> candidate(new MPX68KYM2151(chipClock));
+    if (!candidate) {
+        return FALSE;
+    }
 
-void MyOPM::WriteIO(DWORD adr, BYTE data)
-{
-	if( adr&1 ) {
-		if ( CurReg==0x1b ) {
-			::ADPCM_SetClock((data>>5)&4);
-			::FDC_SetForceReady((data>>6)&1);
-		}
-		SetReg((int)CurReg, (int)data);
-#if FM_MIDI_OUT
-        if ( CurReg >= 0x08 ) {
-            int ch = data & 0x07;
-            int KeyOnOff = (data >> 3) & 0x0f;
+    s_defaultNativeRate = static_cast<int>(candidate->nativeRate());
+    s_opm = std::move(candidate);
+    return TRUE;
+}
 
-            int send = s_KeyCode[ch];
+void OPM_Cleanup(void) {
+    s_opm.reset();
+}
 
-            if ( KeyOnOff == 0 ) {
+void OPM_SetRate(int clock, int rate) {
+    // ymfm's OPM rate is determined by the physical chip clock. The host
+    // output rate is configured by X68000_AudioRenderSetHostRate().
+    (void)clock;
+    (void)rate;
+}
 
-                X68000_AddMIDIBuffer( 0x80+ch );    // Note On
-                X68000_AddMIDIBuffer( s_KeyCode[ch] );    // Key
-                X68000_AddMIDIBuffer( 0 );     // Vel
+void OPM_Reset(void) {
+    if (s_opm) {
+        s_opm->reset();
+    }
+}
 
-            } else {
+BYTE FASTCALL OPM_Read(WORD adr) {
+    (void)adr;
+    return s_opm ? s_opm->chip().read_status() : 0;
+}
+
+void FASTCALL OPM_Write(DWORD adr, BYTE data) {
+    if (s_opm) {
+        s_opm->chip().write(adr, data);
+    }
+}
+
+void OPM_GenerateNative(int* buffer, int length) {
+    if (s_opm) {
+        s_opm->generate(buffer, length);
+    } else if (buffer && length > 0) {
+        for (int index = 0; index < length * 2; ++index) {
+            buffer[index] = 0;
         }
+    }
+}
 
-        }
+void OPM_Update(short* buffer,
+                int length,
+                int rate,
+                BYTE* pbsp,
+                BYTE* pbep) {
+    (void)rate;
+    if (!buffer || length <= 0) {
+        return;
+    }
 
-        if (( CurReg >= 0x28 ) && ( CurReg <= 0x2f )) {
-            int ch = CurReg - 0x28;
-            int d = data;
-            int Note = d & 0x0f; // 4bit(0-15)
-            int Oct = (d >> 4) & 0x07; // 3bit(0-7)
-            int KC = (d>>7) & 0x01;
-            if ( Note >= 12 ) {
-                Note = Note % 12;
-                Oct += 1;
+    // Compatibility entry point for callers outside the new macOS renderer.
+    // The macOS path uses OPM_GenerateNative() and performs rate conversion
+    // after the complete native mix.
+    static int nativeBuffer[4096 * 2];
+    int remaining = length;
+    short* output = buffer;
+    while (remaining > 0) {
+        const int frames = (remaining > 4096) ? 4096 : remaining;
+        OPM_GenerateNative(nativeBuffer, frames);
+        const bool hasRingBounds = pbsp && pbep && (pbep > pbsp);
+        short* ringStart = reinterpret_cast<short*>(pbsp);
+        short* ringEnd = reinterpret_cast<short*>(pbep);
+        for (int frame = 0; frame < frames; ++frame) {
+            if (hasRingBounds && output + 2 > ringEnd) {
+                output = ringStart;
             }
-            int send = 0;
-            for ( int i=0; i<sizeof(KeyCodeTable);++i ) {
-                if ( KeyCodeTable[i] == d & 0x7f ) {
-                    send = i + 3;
-                    break;
-                }
-            }
-            //            printf("%02x CH:%d KC:%d KF:%3d Oct:%d Note:%2d = %3d(%02x)\n", d, ch, KC, s_KF[ch], Oct, Note, send, send);
-
-            X68000_AddMIDIBuffer( 0x80+ch );    // Note On
-            X68000_AddMIDIBuffer( s_KeyCode[ch] );    // Key
-            X68000_AddMIDIBuffer( 0 );     // Vel
-
-            X68000_AddMIDIBuffer( 0x90+ch );    // Note On
-            X68000_AddMIDIBuffer( send );    // Key
-            X68000_AddMIDIBuffer( 127 );     // Vel
-
-            s_old_KeyCode[ch] = s_KeyCode[ch];
-            s_KeyCode[ch] = send;//12*Oct + Note;
-
-
-            
+            output[0] = static_cast<short>(clampSample(nativeBuffer[frame * 2]));
+            output[1] = static_cast<short>(clampSample(nativeBuffer[frame * 2 + 1]));
+            output += 2;
         }
-        if ( CurReg == 0x30 ) {
-            int ch = CurReg - 0x30;
-            s_KF[ch] = data>>2;
-        }
-#endif
-        
-    } else {
-		CurReg = (int)data;
-	}
+        remaining -= frames;
+    }
 }
 
-void MyOPM::Intr(bool f)
-{
-	if ( f ) ::MFP_Int(12);
+void FASTCALL OPM_Timer(DWORD step) {
+    // YMFM timers are advanced with the native sample clock in generate().
+    // The legacy hsync callback remains as a compatibility no-op.
+    (void)step;
 }
 
-
-void MyOPM::Count2(DWORD clock)
-{
-	CurCount += clock;
-	Count(CurCount/10);
-	CurCount %= 10;
+void OPM_SetVolume(BYTE vol) {
+    if (s_opm) {
+        s_opm->setVolume(vol);
+    }
 }
 
-
-static MyOPM* opm = NULL;
-
-int OPM_Init(int clock, int rate)
-{
-	opm = new MyOPM();
-	if ( !opm ) return FALSE;
-	if ( !opm->Init(clock, rate, TRUE) ) {
-		delete opm;
-		opm = NULL;
-		return FALSE;
-	}
-	return TRUE;
+int OPM_GetNativeSampleRate(void) {
+    return s_opm ? static_cast<int>(s_opm->nativeRate()) : s_defaultNativeRate;
 }
 
-
-void OPM_Cleanup(void)
-{
-    delete opm;
-	opm = NULL;
-}
-
-
-void OPM_SetRate(int clock, int rate)
-{
-	if ( opm ) opm->SetRate(clock, rate, TRUE);
-}
-
-
-void OPM_Reset(void)
-{
-	if ( opm ) opm->Reset();
-}
-
-
-BYTE FASTCALL OPM_Read(WORD adr)
-{
-	BYTE ret = 0;
-	(void)adr;
-	if ( opm ) ret = opm->ReadStatus();
-    return ret;
-}
-
-
-void FASTCALL OPM_Write(DWORD adr, BYTE data)
-{
-    
-    
-	if ( opm ) opm->WriteIO(adr, data);
-}
-
-
-void OPM_Update(short *buffer, int length, int rate, BYTE *pbsp, BYTE *pbep)
-{
-    if ( opm ) opm->Mix((FM::Sample*)buffer, length, rate, pbsp, pbep);
-}
-
-
-void FASTCALL OPM_Timer(DWORD step)
-{
-	if ( opm ) opm->Count2(step);
-}
-
-
-void OPM_SetVolume(BYTE vol)
-{
-	int v = (vol)?((16-vol)*4):192;		// このくらいかなぁ
-	if ( opm ) opm->SetVolume(-v);
-}
+} // extern "C"
