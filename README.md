@@ -30,9 +30,10 @@ MPX68K repository:
   are available from -24 dB to +24 dB in 0.5 dB steps. ADPCM also has a
   continuous hardware-style low-pass cutoff from 3.3 kHz to 20 kHz (3.3 kHz
   by default). The hosted Audio Unit synth has a separate output volume from
-  -60 dB to 0 dB in 0.5 dB steps. These controls apply immediately and are
-  saved between launches; for example, ADPCM -6 dB and FM +6 dB can be
-  selected directly in the settings panel.
+  -60 dB to 0 dB in 0.5 dB steps. Slider changes are published live through
+  the audio parameter path, ramped by the renderer, and saved after interaction
+  ends without restarting the active audio graph or emulation. For example,
+  ADPCM -6 dB and FM +6 dB can be selected directly in the settings panel.
 
 ## Features
 
@@ -197,7 +198,7 @@ built automatically by the Xcode project; ymfm is pinned as the
 - **Disk State Management → Save Current State / Clear Saved State / Show State Information**
 - **JoyportU Settings → Disabled / Notify Mode / Command Mode**
 
-The MIDI & Audio Unit panel keeps the emulator audio active while optionally hosting a macOS Music Device Audio Unit in parallel. CoreMIDI is OUT-A; RS-232C is OUT-B and uses a selected `/dev/cu.*` or `/dev/tty.*` device at MIDI's 31,250 baud, 8-N-1 framing. MIDI events retain their host-clock timing through the parser, and CoreMIDI/AU scheduling uses a shared look-ahead timeline. Built-in YM2151 audio is adapted to match the host device rate; Direct AudioUnit is the low-latency asynchronous path, while AudioQueue is available for compatibility. MIDI IN is not connected yet.
+The MIDI & Audio Unit panel keeps the emulator audio active while optionally hosting a macOS Music Device Audio Unit (AUv2 or AUv3) in parallel. CoreMIDI is OUT-A; RS-232C is OUT-B and uses a selected `/dev/cu.*` or `/dev/tty.*` device at MIDI's 31,250 baud, 8-N-1 framing. MIDI events retain their host-clock timing through the parser, and CoreMIDI/AU scheduling uses a shared look-ahead timeline. Built-in YM2151 audio is adapted to match the host device rate; Direct AudioUnit is the low-latency asynchronous path, while AudioQueue is available for compatibility. MIDI IN is not connected yet.
 
 #### Joycard Input
 - **Arrow Keys** or **WASD**: 8-direction movement

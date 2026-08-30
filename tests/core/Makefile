@@ -4,6 +4,12 @@
 
 CC ?= cc
 PX68K = ../../X68000 Shared/px68k
+UNAME_S := $(shell uname -s)
+ifeq ($(UNAME_S),Darwin)
+AUDIO_RENDER_GC_FLAGS = -Wl,-dead_strip
+else
+AUDIO_RENDER_GC_FLAGS = -Wl,--gc-sections
+endif
 # Sanitizers catch renderer buffer overruns (e.g. 1024-dot line rendering
 # into Text_TrFlag/ScrBuf). Override with SAN= on toolchains without them.
 SAN ?= -fsanitize=address,undefined
@@ -13,7 +19,8 @@ CFLAGS += -Wall -g $(SAN) \
 
 # Test binaries are phony so edits to the (space-containing) core source
 # paths always trigger a rebuild; the builds are cheap.
-.PHONY: all run clean test_disk_d88 test_crtc_timing test_mfp_hsync test_scrbuf
+.PHONY: all run clean test_disk_d88 test_crtc_timing test_mfp_hsync test_scrbuf \
+	test_audio_render_live_settings
 
 all: run
 
@@ -33,11 +40,19 @@ test_scrbuf:
 		"$(PX68K)/x11/scrbuf.c" "$(PX68K)/x11/windraw.c" \
 		"$(PX68K)/x68k/crtc_timing.c" "$(PX68K)/x68k/crtc.c" -lm
 
-run: test_disk_d88 test_crtc_timing test_mfp_hsync test_scrbuf
+test_audio_render_live_settings:
+	$(CC) $(CFLAGS) -ffunction-sections -fdata-sections \
+		-I "$(PX68K)/fmgen" $(AUDIO_RENDER_GC_FLAGS) -o $@ test_audio_render_live_settings.c \
+		"$(PX68K)/x11/dswin.c" -lm
+
+run: test_disk_d88 test_crtc_timing test_mfp_hsync test_scrbuf \
+	test_audio_render_live_settings
 	./test_disk_d88
 	./test_crtc_timing
 	./test_mfp_hsync
 	./test_scrbuf
+	./test_audio_render_live_settings
 
 clean:
-	rm -f test_disk_d88 test_crtc_timing test_mfp_hsync test_scrbuf _test_image.d88
+	rm -f test_disk_d88 test_crtc_timing test_mfp_hsync test_scrbuf \
+		test_audio_render_live_settings _test_image.d88

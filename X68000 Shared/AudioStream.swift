@@ -147,6 +147,112 @@ class AudioStream {
     }
 
     #if os(macOS)
+    // Audio controls are delivered from SwiftUI's main thread, while the
+    // emulator and platform callback have their own timing requirements. Do
+    // the small amount of gain/filter preparation off the main thread and
+    // coalesce slider events so an old drag position cannot be applied after
+    // the newest one.
+    private static let audioParameterQueue = DispatchQueue(
+        label: "MPX68K.AudioStream.parameters",
+        qos: .userInitiated
+    )
+    private static let audioParameterLock = NSLock()
+    private struct PendingAudioParameters {
+        var adpcmGainDB: Float?
+        var opmGainDB: Float?
+        var lowPassCutoffHz: Float?
+    }
+    private static var pendingAudioParameters = PendingAudioParameters(
+        adpcmGainDB: nil,
+        opmGainDB: nil,
+        lowPassCutoffHz: nil
+    )
+    private static var requestedAdpcmGainDB: Float = 0.0
+    private static var requestedOpmGainDB: Float = 0.0
+    private static var audioParameterUpdateScheduled = false
+
+    private static func enqueueAudioParameters(adpcmGainDB: Float? = nil,
+                                                opmGainDB: Float? = nil,
+                                                lowPassCutoffHz: Float? = nil) {
+        var shouldStartDrain = false
+        audioParameterLock.lock()
+        if let adpcmGainDB {
+            pendingAudioParameters.adpcmGainDB = adpcmGainDB
+            requestedAdpcmGainDB = adpcmGainDB
+        }
+        if let opmGainDB {
+            pendingAudioParameters.opmGainDB = opmGainDB
+            requestedOpmGainDB = opmGainDB
+        }
+        if let lowPassCutoffHz {
+            pendingAudioParameters.lowPassCutoffHz = lowPassCutoffHz
+        }
+        if !audioParameterUpdateScheduled {
+            audioParameterUpdateScheduled = true
+            shouldStartDrain = true
+        }
+        audioParameterLock.unlock()
+
+        guard shouldStartDrain else { return }
+        audioParameterQueue.async {
+            Self.drainAudioParameters()
+        }
+    }
+
+    // These entry points are intentionally independent of an AudioStream
+    // instance. SwiftUI can call them for every slider movement without
+    // touching GameScene state or any output object's lifecycle.
+    static func publishInternalAudioGains(adpcmGainDB: Double,
+                                          opmGainDB: Double) {
+        enqueueAudioParameters(
+            adpcmGainDB: Float(adpcmGainDB),
+            opmGainDB: Float(opmGainDB)
+        )
+    }
+
+    static func publishInternalAudioLowPass(cutoffHz: Double) {
+        enqueueAudioParameters(lowPassCutoffHz: Float(cutoffHz))
+    }
+
+    private static func drainAudioParameters() {
+        while true {
+            audioParameterLock.lock()
+            let pending = pendingAudioParameters
+            pendingAudioParameters = PendingAudioParameters(
+                adpcmGainDB: nil,
+                opmGainDB: nil,
+                lowPassCutoffHz: nil
+            )
+            audioParameterLock.unlock()
+
+            if pending.adpcmGainDB != nil || pending.opmGainDB != nil {
+                // Both values are retained under the same lock so a caller
+                // that updates one bus cannot accidentally reset the other.
+                audioParameterLock.lock()
+                let adpcmGainDB = requestedAdpcmGainDB
+                let opmGainDB = requestedOpmGainDB
+                audioParameterLock.unlock()
+                X68000_AudioRenderSetBusGains(adpcmGainDB, opmGainDB)
+            }
+            if let lowPassCutoffHz = pending.lowPassCutoffHz {
+                X68000_AudioRenderSetADPCMLowPassCutoff(lowPassCutoffHz)
+            }
+
+            audioParameterLock.lock()
+            let hasPendingParameters = pendingAudioParameters.adpcmGainDB != nil
+                || pendingAudioParameters.opmGainDB != nil
+                || pendingAudioParameters.lowPassCutoffHz != nil
+            if !hasPendingParameters {
+                audioParameterUpdateScheduled = false
+                audioParameterLock.unlock()
+                return
+            }
+            audioParameterLock.unlock()
+        }
+    }
+    #endif
+
+    #if os(macOS)
     private let audioUnitHost = MPX68KAudioUnitHost()
     private var directAudioUnitOutput: MPX68KDirectAudioUnitOutput?
     #endif
@@ -450,7 +556,24 @@ class AudioStream {
     }
 
     @discardableResult
-    func applyInternalAudioSettings(_ settings: MPX68KInternalAudioSettings) -> String? {
+    func applyInternalAudioOutputSettings(
+        mode: MPX68KInternalAudioRenderMode,
+        bufferFrames: Int
+    ) -> String? {
+        // This method is deliberately limited to the two settings that define
+        // the output object. Runtime mix/filter parameters never enter this
+        // path, so a slider cannot accidentally stop or rebuild audio.
+        let settings = MPX68KInternalAudioSettings(
+            mode: mode,
+            bufferFrames: bufferFrames,
+            adpcmGainDB: internalAudioSettings.adpcmGainDB,
+            opmGainDB: internalAudioSettings.opmGainDB,
+            adpcmLowPassCutoffHz: internalAudioSettings.adpcmLowPassCutoffHz
+        )
+        let outputPathChanged = settings.mode != internalAudioSettings.mode
+            || settings.bufferFrames != internalAudioSettings.bufferFrames
+        guard outputPathChanged else { return nil }
+
         let wasRunning = isInternalOutputRunning
         if wasRunning {
             stopInternalOutput()
@@ -482,11 +605,30 @@ class AudioStream {
     #if os(macOS)
 
     func applyInternalAudioGains(adpcmGainDB: Double, opmGainDB: Double) {
-        X68000_AudioRenderSetBusGains(Float(adpcmGainDB), Float(opmGainDB))
+        let settings = MPX68KInternalAudioSettings(
+            mode: internalAudioSettings.mode,
+            bufferFrames: internalAudioSettings.bufferFrames,
+            adpcmGainDB: adpcmGainDB,
+            opmGainDB: opmGainDB,
+            adpcmLowPassCutoffHz: internalAudioSettings.adpcmLowPassCutoffHz
+        )
+        internalAudioSettings = settings
+        Self.publishInternalAudioGains(
+            adpcmGainDB: settings.adpcmGainDB,
+            opmGainDB: settings.opmGainDB
+        )
     }
 
     func applyInternalAudioLowPass(cutoffHz: Double) {
-        X68000_AudioRenderSetADPCMLowPassCutoff(Float(cutoffHz))
+        let settings = MPX68KInternalAudioSettings(
+            mode: internalAudioSettings.mode,
+            bufferFrames: internalAudioSettings.bufferFrames,
+            adpcmGainDB: internalAudioSettings.adpcmGainDB,
+            opmGainDB: internalAudioSettings.opmGainDB,
+            adpcmLowPassCutoffHz: cutoffHz
+        )
+        internalAudioSettings = settings
+        Self.publishInternalAudioLowPass(cutoffHz: settings.adpcmLowPassCutoffHz)
     }
 
     #endif
@@ -500,6 +642,10 @@ class AudioStream {
     func applyAudioUnitSettings(_ settings: MPX68KAudioUnitSettings,
                                 completion: @escaping (String?) -> Void) {
         audioUnitHost.apply(settings, completion: completion)
+    }
+
+    func applyAudioUnitVolume(_ gainDB: Double) {
+        audioUnitHost.setGainOnly(gainDB)
     }
 
     func sendAudioUnitMIDI(_ event: [UInt8], hostTime: UInt64) {
@@ -834,14 +980,20 @@ private let mpx68kDirectAudioRenderCallback: AURenderCallback = {
 }
 
 private final class MPX68KAudioUnitHost {
+    private static let audioUnitLoadQueue = DispatchQueue(
+        label: "MPX68K.AudioUnitHost.load",
+        qos: .userInitiated
+    )
     private let engine = AVAudioEngine()
     private let audioUnitMixer = AVAudioMixerNode()
     private var audioUnit: AVAudioUnit?
     private var midiScheduler: AUScheduleMIDIEventBlock?
+    private var legacyAudioUnit: AudioUnit?
     private var currentDescriptor: MPX68KAudioUnitDescriptor?
     private var loadingComponentID: String?
     private var loadGeneration: UInt = 0
     private var isEnabled = false
+    private var shouldRun = false
     private var gainDB: Double = 0.0
     private var isClosed = false
 
@@ -892,16 +1044,43 @@ private final class MPX68KAudioUnitHost {
             return
         }
 
+        let normalizedGainDB = min(max(settings.gainDB, -60.0), 0.0)
+
+        // A gain-only change must stay on the running graph. In particular,
+        // do not enumerate components, stop the engine, or reconnect the AU
+        // while a slider is being dragged. AVAudioMixerNode exposes this as a
+        // realtime-safe per-node gain control.
+        if settings.enabled,
+           currentDescriptor?.id == settings.componentID,
+           audioUnit != nil {
+            gainDB = normalizedGainDB
+            isEnabled = true
+            audioUnitMixer.outputVolume = Self.linearGain(for: gainDB)
+            // This is a parameter-only update. The graph is already running;
+            // do not call prepare/start here, because even a graph-preserving
+            // start attempt can make the engine negotiate or interrupt the
+            // current render cycle. Explicit play/resume owns engine start.
+            if shouldRun && !engine.isRunning {
+                start(completion: completion)
+            } else {
+                completion(nil)
+            }
+            return
+        }
+
         if !settings.enabled || currentDescriptor?.id != settings.componentID {
             sendPanicToCurrentAudioUnit()
         }
-        gainDB = min(max(settings.gainDB, -60.0), 0.0)
+        gainDB = normalizedGainDB
         isEnabled = settings.enabled
 
         guard settings.enabled else {
             loadGeneration &+= 1
             loadingComponentID = nil
-            stop()
+            // Disable only the AU engine. Preserve the application's desired
+            // playback state so re-enabling the same instrument can start it
+            // without rebuilding the graph.
+            stopEngine()
             completion(nil)
             return
         }
@@ -911,27 +1090,33 @@ private final class MPX68KAudioUnitHost {
             loadGeneration &+= 1
             loadingComponentID = nil
             isEnabled = false
-            stop()
+            stopEngine()
             completion("Select an Audio Unit instrument before enabling Audio Unit output")
-            return
-        }
-
-        if currentDescriptor?.id == descriptor.id, audioUnit != nil {
-            audioUnitMixer.outputVolume = Self.linearGain(for: gainDB)
-            start(completion: completion)
             return
         }
 
         if loadingComponentID == descriptor.id {
             // A slider update or repeated toggle can arrive while the AU is
             // being instantiated. The pending load observes the latest gain.
+            completion(nil)
             return
         }
 
         load(descriptor: descriptor, completion: completion)
     }
 
+    func setGainOnly(_ gainDB: Double) {
+        guard !isClosed else { return }
+        self.gainDB = min(max(gainDB, -60.0), 0.0)
+        guard audioUnit != nil else { return }
+        // AVAudioMixerNode's outputVolume is a graph parameter. Updating it
+        // does not stop/prepare/reconnect the engine and must not call start,
+        // even if a previous device interruption left the engine stopped.
+        audioUnitMixer.outputVolume = Self.linearGain(for: self.gainDB)
+    }
+
     func play() {
+        shouldRun = true
         guard isEnabled, audioUnit != nil else { return }
         start { error in
             if let error = error {
@@ -941,11 +1126,17 @@ private final class MPX68KAudioUnitHost {
     }
 
     func pause() {
+        shouldRun = false
         guard engine.isRunning else { return }
         engine.pause()
     }
 
     func stop() {
+        shouldRun = false
+        stopEngine()
+    }
+
+    private func stopEngine() {
         if engine.isRunning {
             engine.stop()
         }
@@ -954,6 +1145,7 @@ private final class MPX68KAudioUnitHost {
     func close() {
         guard !isClosed else { return }
         isClosed = true
+        shouldRun = false
         loadGeneration &+= 1
         loadingComponentID = nil
         engine.stop()
@@ -963,26 +1155,37 @@ private final class MPX68KAudioUnitHost {
         }
         audioUnit = nil
         midiScheduler = nil
+        legacyAudioUnit = nil
         currentDescriptor = nil
     }
 
     func sendMIDI(_ event: [UInt8], hostTime: UInt64) {
         guard isEnabled,
               !event.isEmpty,
-              let midiScheduler,
               audioUnit != nil else {
             return
         }
 
-        scheduleMIDI(event, atHostTime: hostTime, using: midiScheduler)
+        if let midiScheduler {
+            scheduleMIDI(event, atHostTime: hostTime, using: midiScheduler)
+        } else if let legacyAudioUnit {
+            sendLegacyMIDI(event, atHostTime: hostTime, using: legacyAudioUnit)
+        }
     }
 
     private func sendPanicToCurrentAudioUnit() {
-        guard let midiScheduler, audioUnit != nil else { return }
+        guard audioUnit != nil else { return }
         for channel in 0..<16 {
             let status = 0xB0 | UInt8(channel)
-            scheduleMIDI([status, 123, 0], atHostTime: 0, using: midiScheduler)
-            scheduleMIDI([status, 120, 0], atHostTime: 0, using: midiScheduler)
+            let allNotesOff = [status, 123, 0]
+            let allSoundOff = [status, 120, 0]
+            if let midiScheduler {
+                scheduleMIDI(allNotesOff, atHostTime: 0, using: midiScheduler)
+                scheduleMIDI(allSoundOff, atHostTime: 0, using: midiScheduler)
+            } else if let legacyAudioUnit {
+                sendLegacyMIDI(allNotesOff, atHostTime: 0, using: legacyAudioUnit)
+                sendLegacyMIDI(allSoundOff, atHostTime: 0, using: legacyAudioUnit)
+            }
         }
     }
 
@@ -994,6 +1197,43 @@ private final class MPX68KAudioUnitHost {
             guard let baseAddress = buffer.baseAddress else { return }
             scheduler(eventSampleTime, 0, event.count, baseAddress)
         }
+    }
+
+    private func sendLegacyMIDI(_ event: [UInt8],
+                                atHostTime hostTime: UInt64,
+                                using audioUnit: AudioUnit) {
+        guard let status = event.first else { return }
+        let data1 = event.count > 1 ? event[1] : 0
+        let data2 = event.count > 2 ? event[2] : 0
+        let offset = sampleOffset(forHostTime: hostTime)
+        _ = MusicDeviceMIDIEvent(
+            audioUnit,
+            UInt32(status),
+            UInt32(data1),
+            UInt32(data2),
+            offset
+        )
+    }
+
+    private func sampleOffset(forHostTime hostTime: UInt64) -> UInt32 {
+        guard let renderTime = engine.outputNode.lastRenderTime,
+              renderTime.isHostTimeValid,
+              renderTime.isSampleTimeValid,
+              renderTime.sampleRate > 0.0 else {
+            return 0
+        }
+
+        let hostClockFrequency = AudioGetHostClockFrequency()
+        guard hostClockFrequency > 0.0 else { return 0 }
+        let deltaTicks: Double
+        if hostTime >= renderTime.hostTime {
+            deltaTicks = Double(hostTime - renderTime.hostTime)
+        } else {
+            deltaTicks = -Double(renderTime.hostTime - hostTime)
+        }
+        let deltaFrames = deltaTicks / hostClockFrequency * renderTime.sampleRate
+        guard deltaFrames > 0.0 else { return 0 }
+        return UInt32(min(deltaFrames.rounded(), Double(UInt32.max)))
     }
 
     private func sampleTime(forHostTime hostTime: UInt64) -> AUEventSampleTime {
@@ -1049,55 +1289,152 @@ private final class MPX68KAudioUnitHost {
         loadGeneration &+= 1
         let generation = loadGeneration
         loadingComponentID = descriptor.id
-        stop()
+        stopEngine()
         if let oldAudioUnit = audioUnit {
             engine.disconnectNodeInput(oldAudioUnit)
             engine.detach(oldAudioUnit)
         }
         audioUnit = nil
         midiScheduler = nil
+        legacyAudioUnit = nil
         currentDescriptor = nil
 
         let description = AudioComponentDescription(
             componentType: descriptor.componentType,
             componentSubType: descriptor.componentSubType,
             componentManufacturer: descriptor.componentManufacturer,
-            componentFlags: descriptor.componentFlags,
-            componentFlagsMask: descriptor.componentFlagsMask
+            // The type/subtype/manufacturer identify the component. Passing
+            // enumeration-time flags back into instantiation can make a valid
+            // AUv2 lookup fail when the manager supplied a flag mask.
+            componentFlags: 0,
+            componentFlagsMask: 0
         )
 
-        AVAudioUnit.instantiate(with: description, options: []) { [weak self] unit, error in
-            DispatchQueue.main.async {
-                guard let self = self else { return }
-                guard self.loadGeneration == generation else { return }
-                self.loadingComponentID = nil
-                if let error = error {
-                    self.isEnabled = false
-                    completion("Cannot load Audio Unit: \(error.localizedDescription)")
-                    return
-                }
-                guard let unit = unit else {
-                    self.isEnabled = false
-                    completion("Audio Unit returned no instance")
-                    return
-                }
-
-                guard let midiScheduler = unit.auAudioUnit.scheduleMIDIEventBlock else {
-                    self.isEnabled = false
-                    completion("This Audio Unit does not accept MIDI input")
-                    return
-                }
-
-                self.engine.attach(unit)
-                self.engine.connect(unit, to: self.audioUnitMixer, format: nil)
-
-                self.audioUnit = unit
-                self.currentDescriptor = descriptor
-                self.midiScheduler = midiScheduler
-                self.audioUnitMixer.outputVolume = Self.linearGain(for: self.gainDB)
-                self.start(completion: completion)
+        // Do not use AVAudioUnitMIDIInstrument's synchronous initializer here.
+        // Some valid AUv2 music devices throw an Objective-C NSException
+        // ("error -1") from that initializer. Swift Error handling cannot
+        // catch an NSException, so the process would terminate before
+        // `finishLoad` could report the failure. The asynchronous factory is
+        // the safe path for both AUv2 and AUv3 components and reports failures
+        // through its Error? completion value.
+        //
+        // AUv2 Music Devices are almost never sandbox-safe. Instantiate them
+        // out of process first so the host does not dlopen the component
+        // in-process under the hardened runtime. macOS may then show its
+        // standard "Lower Security Settings" confirmation for this app only.
+        // Fall back to the system default only if that request is rejected.
+        Self.audioUnitLoadQueue.async { [weak self] in
+            Self.instantiateMusicDevice(description: description) { unit, error in
+                self?.finishLoad(
+                    unit: unit,
+                    error: error,
+                    descriptor: descriptor,
+                    generation: generation,
+                    completion: completion
+                )
             }
         }
+    }
+
+    private static func instantiateMusicDevice(
+        description: AudioComponentDescription,
+        completion: @escaping (AVAudioUnit?, Error?) -> Void
+    ) {
+        AVAudioUnit.instantiate(with: description, options: .loadOutOfProcess) { unit, error in
+            if unit != nil {
+                completion(unit, nil)
+                return
+            }
+            AVAudioUnit.instantiate(with: description, options: []) { fallbackUnit, fallbackError in
+                completion(fallbackUnit, fallbackError ?? error)
+            }
+        }
+    }
+
+    private func finishLoad(unit: AVAudioUnit?,
+                            error: Error?,
+                            descriptor: MPX68KAudioUnitDescriptor,
+                            generation: UInt,
+                            completion: @escaping (String?) -> Void) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            guard self.loadGeneration == generation else {
+                // The caller has already requested another state. Do not
+                // leave its UI waiting for a completion from an obsolete
+                // instance.
+                completion(nil)
+                return
+            }
+            self.loadingComponentID = nil
+            if let error = error {
+                self.isEnabled = false
+                errorLog(
+                    "Cannot load Audio Unit \(descriptor.name): \(error.localizedDescription)",
+                    category: .audio
+                )
+                completion("Cannot load Audio Unit: \(error.localizedDescription)")
+                return
+            }
+            guard let unit = unit else {
+                self.isEnabled = false
+                completion("Audio Unit returned no instance")
+                return
+            }
+
+            self.engine.attach(unit)
+            self.engine.connect(unit, to: self.audioUnitMixer, format: nil)
+
+            self.audioUnit = unit
+            self.currentDescriptor = descriptor
+            self.audioUnitMixer.outputVolume = Self.linearGain(for: self.gainDB)
+            if self.shouldRun {
+                self.start { error in
+                    if let error = error {
+                        completion(error)
+                        return
+                    }
+                    self.bindMIDI(from: unit, completion: completion)
+                }
+            } else {
+                self.bindMIDI(from: unit, completion: completion)
+            }
+        }
+    }
+
+    private func bindMIDI(from unit: AVAudioUnit,
+                          completion: @escaping (String?) -> Void) {
+        var midiScheduler = unit.auAudioUnit.scheduleMIDIEventBlock
+        var legacyAudioUnit = midiScheduler == nil ? unit.audioUnit : nil
+        if midiScheduler == nil && legacyAudioUnit == nil {
+            // AUv2 wrappers often expose the MIDI schedule block only after
+            // render resources exist. Try an explicit allocate before giving up.
+            do {
+                try unit.auAudioUnit.allocateRenderResources()
+                midiScheduler = unit.auAudioUnit.scheduleMIDIEventBlock
+                legacyAudioUnit = midiScheduler == nil ? unit.audioUnit : nil
+            } catch {
+                errorLog(
+                    "Audio Unit MIDI resource allocation: \(error.localizedDescription)",
+                    category: .audio
+                )
+            }
+        }
+        guard midiScheduler != nil || legacyAudioUnit != nil else {
+            isEnabled = false
+            stopEngine()
+            if let audioUnit = audioUnit {
+                engine.disconnectNodeInput(audioUnit)
+                engine.detach(audioUnit)
+            }
+            audioUnit = nil
+            currentDescriptor = nil
+            completion("This Audio Unit does not accept MIDI input")
+            return
+        }
+
+        self.midiScheduler = midiScheduler
+        self.legacyAudioUnit = legacyAudioUnit
+        completion(nil)
     }
 
     private func start(completion: @escaping (String?) -> Void) {
@@ -1116,6 +1453,14 @@ private final class MPX68KAudioUnitHost {
             completion(nil)
         } catch {
             isEnabled = false
+            if let audioUnit = audioUnit {
+                engine.disconnectNodeInput(audioUnit)
+                engine.detach(audioUnit)
+            }
+            audioUnit = nil
+            midiScheduler = nil
+            legacyAudioUnit = nil
+            currentDescriptor = nil
             completion("Cannot start Audio Unit engine: \(error.localizedDescription)")
         }
     }

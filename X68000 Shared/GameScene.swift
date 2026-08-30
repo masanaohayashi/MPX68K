@@ -1818,27 +1818,29 @@ class GameScene: SKScene {
     }
 
     @discardableResult
-    func applyInternalAudioSettings(_ settings: MPX68KInternalAudioSettings,
-                                    persist: Bool = true) -> String? {
+    func applyInternalAudioOutputSettings(
+        mode: MPX68KInternalAudioRenderMode,
+        bufferFrames: Int,
+        persist: Bool = true
+    ) -> String? {
         let normalized = MPX68KInternalAudioSettings(
-            mode: settings.mode,
-            bufferFrames: settings.bufferFrames,
-            adpcmGainDB: settings.adpcmGainDB,
-            opmGainDB: settings.opmGainDB,
-            adpcmLowPassCutoffHz: settings.adpcmLowPassCutoffHz
+            mode: mode,
+            bufferFrames: bufferFrames,
+            adpcmGainDB: internalAudioSettings.adpcmGainDB,
+            opmGainDB: internalAudioSettings.opmGainDB,
+            adpcmLowPassCutoffHz: internalAudioSettings.adpcmLowPassCutoffHz
         )
         guard let stream = audioStream else {
             return "Audio stream is not ready"
         }
-        let error = stream.applyInternalAudioSettings(normalized)
+        let error = stream.applyInternalAudioOutputSettings(
+            mode: normalized.mode,
+            bufferFrames: normalized.bufferFrames
+        )
         internalAudioSettings = normalized
         if persist && error == nil {
             userDefaults.set(normalized.mode.rawValue, forKey: internalAudioModeDefaultsKey)
             userDefaults.set(normalized.bufferFrames, forKey: internalAudioBufferFramesDefaultsKey)
-            userDefaults.set(normalized.adpcmGainDB, forKey: internalAudioADPCMGainDefaultsKey)
-            userDefaults.set(normalized.opmGainDB, forKey: internalAudioOPMGainDefaultsKey)
-            userDefaults.set(normalized.adpcmLowPassCutoffHz,
-                              forKey: internalAudioADPCMLowPassCutoffDefaultsKey)
         }
         if let error = error {
             warningLog("Built-in audio configuration: \(error)", category: .audio)
@@ -1961,6 +1963,22 @@ class GameScene: SKScene {
             }
             completion(error)
         }
+    }
+
+    @discardableResult
+    func applyAudioUnitVolume(_ gainDB: Double,
+                              persist: Bool = true) -> String? {
+        let normalizedGainDB = min(max(gainDB, -60.0), 0.0)
+        audioUnitSettings.gainDB = normalizedGainDB
+        guard let stream = audioStream else {
+            return "Audio stream is not ready"
+        }
+
+        stream.applyAudioUnitVolume(normalizedGainDB)
+        if persist {
+            userDefaults.set(normalizedGainDB, forKey: audioUnitGainDefaultsKey)
+        }
+        return nil
     }
 
     func showAudioUnitEditor(completion: @escaping (Result<NSViewController, Error>) -> Void) {

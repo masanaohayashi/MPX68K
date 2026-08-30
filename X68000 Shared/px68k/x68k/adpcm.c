@@ -34,6 +34,7 @@ static void ADPCM_WriteOne_Optimized(int val);
 // be opened up for modern audio devices.
 #define ADPCM_LOWPASS_MIN_CUTOFF_HZ 3300.0f
 #define ADPCM_LOWPASS_MAX_CUTOFF_HZ 20000.0f
+#define ADPCM_LOWPASS_RAMP_FRAMES 256u
 
 #define INTERPOLATE(y, x)	\
 	(((((((-y[0]+3*y[1]-3*y[2]+y[3]) * x + FM_IPSCALE/2) / FM_IPSCALE \
@@ -77,17 +78,28 @@ typedef struct {
     float y2;
 } ADPCMFilterState;
 
-// The UI thread publishes only the requested cutoff. Coefficients and filter
-// history are owned by the emulator thread, so changing the slider never
-// takes a lock or performs a partially-updated multi-value read in audio
-// production.
+typedef struct {
+    float b0;
+    float b1;
+    float b2;
+    float a1;
+    float a2;
+} ADPCMFilterCoefficients;
+
+// The settings thread calculates and publishes coefficients. The emulator
+// thread only loads them and ramps between coefficient sets; it never performs
+// trigonometry while producing audio and never takes a lock.
 static _Atomic uint32_t ADPCM_LowPassCutoffBits;
-static uint32_t ADPCM_LowPassAppliedBits = 0;
-static float ADPCM_LowPassB0 = 1.0f;
-static float ADPCM_LowPassB1 = 0.0f;
-static float ADPCM_LowPassB2 = 0.0f;
-static float ADPCM_LowPassA1 = 0.0f;
-static float ADPCM_LowPassA2 = 0.0f;
+static _Atomic uint32_t ADPCM_LowPassB0Bits;
+static _Atomic uint32_t ADPCM_LowPassB1Bits;
+static _Atomic uint32_t ADPCM_LowPassB2Bits;
+static _Atomic uint32_t ADPCM_LowPassA1Bits;
+static _Atomic uint32_t ADPCM_LowPassA2Bits;
+static _Atomic uint32_t ADPCM_LowPassSampleRate = 62500u;
+static uint32_t ADPCM_LowPassTargetBits = 0;
+static uint32_t ADPCM_LowPassRampRemaining = 0;
+static ADPCMFilterCoefficients ADPCM_LowPassCurrent;
+static ADPCMFilterCoefficients ADPCM_LowPassTarget;
 static ADPCMFilterState ADPCM_LowPassRight;
 static ADPCMFilterState ADPCM_LowPassLeft;
 
@@ -124,30 +136,21 @@ static float ADPCM_NormalizeLowPassCutoff(float cutoffHz)
     return cutoffHz;
 }
 
-void ADPCM_SetLowPassCutoff(float cutoffHz)
+static void ADPCM_CalculateLowPassCoefficients(
+    float cutoffHz,
+    ADPCMFilterCoefficients *coefficients)
 {
-    cutoffHz = ADPCM_NormalizeLowPassCutoff(cutoffHz);
-    atomic_store_explicit(&ADPCM_LowPassCutoffBits,
-                          ADPCM_FloatToBits(cutoffHz),
-                          memory_order_release);
-}
-
-static void ADPCM_UpdateLowPassCoefficients(void)
-{
-    uint32_t cutoffBits = atomic_load_explicit(&ADPCM_LowPassCutoffBits,
-                                               memory_order_acquire);
-    if (cutoffBits == 0) {
-        cutoffBits = ADPCM_FloatToBits(ADPCM_LOWPASS_MIN_CUTOFF_HZ);
-    }
-    if (cutoffBits == ADPCM_LowPassAppliedBits) {
+    if (!coefficients) {
         return;
     }
 
-    const double sampleRate = (ADPCM_SampleRate > 0)
-        ? (double)ADPCM_SampleRate / 12.0
+    const uint32_t configuredSampleRate = atomic_load_explicit(
+        &ADPCM_LowPassSampleRate, memory_order_relaxed);
+    const double sampleRate = (configuredSampleRate > 0)
+        ? (double)configuredSampleRate
         : 62500.0;
     const double requestedCutoff =
-        (double)ADPCM_NormalizeLowPassCutoff(ADPCM_BitsToFloat(cutoffBits));
+        (double)ADPCM_NormalizeLowPassCutoff(cutoffHz);
     const double maximumCutoff = fmin((double)ADPCM_LOWPASS_MAX_CUTOFF_HZ,
                                       sampleRate * 0.49);
     const double minimumCutoff = fmin((double)ADPCM_LOWPASS_MIN_CUTOFF_HZ,
@@ -162,22 +165,104 @@ static void ADPCM_UpdateLowPassCoefficients(void)
 
     // A 2-pole Butterworth low-pass gives a smooth, continuously adjustable
     // approximation of the X68000's external analog ADPCM filter.
-    ADPCM_LowPassB0 = (float)(((1.0 - cosine) * 0.5) / a0);
-    ADPCM_LowPassB1 = (float)((1.0 - cosine) / a0);
-    ADPCM_LowPassB2 = ADPCM_LowPassB0;
-    ADPCM_LowPassA1 = (float)((-2.0 * cosine) / a0);
-    ADPCM_LowPassA2 = (float)((1.0 - alpha) / a0);
-    ADPCM_LowPassAppliedBits = cutoffBits;
+    coefficients->b0 = (float)(((1.0 - cosine) * 0.5) / a0);
+    coefficients->b1 = (float)((1.0 - cosine) / a0);
+    coefficients->b2 = coefficients->b0;
+    coefficients->a1 = (float)((-2.0 * cosine) / a0);
+    coefficients->a2 = (float)((1.0 - alpha) / a0);
+}
+
+void ADPCM_SetLowPassCutoff(float cutoffHz)
+{
+    cutoffHz = ADPCM_NormalizeLowPassCutoff(cutoffHz);
+
+    ADPCMFilterCoefficients coefficients;
+    ADPCM_CalculateLowPassCoefficients(cutoffHz, &coefficients);
+    // Publish the complete coefficient set before publishing the cutoff key.
+    // The acquire load of the key in the producer makes this one coherent
+    // configuration visible without a mutex.
+    atomic_store_explicit(&ADPCM_LowPassB0Bits,
+                          ADPCM_FloatToBits(coefficients.b0),
+                          memory_order_relaxed);
+    atomic_store_explicit(&ADPCM_LowPassB1Bits,
+                          ADPCM_FloatToBits(coefficients.b1),
+                          memory_order_relaxed);
+    atomic_store_explicit(&ADPCM_LowPassB2Bits,
+                          ADPCM_FloatToBits(coefficients.b2),
+                          memory_order_relaxed);
+    atomic_store_explicit(&ADPCM_LowPassA1Bits,
+                          ADPCM_FloatToBits(coefficients.a1),
+                          memory_order_relaxed);
+    atomic_store_explicit(&ADPCM_LowPassA2Bits,
+                          ADPCM_FloatToBits(coefficients.a2),
+                          memory_order_relaxed);
+    atomic_store_explicit(&ADPCM_LowPassCutoffBits,
+                          ADPCM_FloatToBits(cutoffHz),
+                          memory_order_release);
+}
+
+static void ADPCM_UpdateLowPassCoefficients(void)
+{
+    uint32_t cutoffBits = atomic_load_explicit(&ADPCM_LowPassCutoffBits,
+                                               memory_order_acquire);
+    if (cutoffBits == 0) {
+        cutoffBits = ADPCM_FloatToBits(ADPCM_LOWPASS_MIN_CUTOFF_HZ);
+    }
+    if (cutoffBits == ADPCM_LowPassTargetBits) {
+        return;
+    }
+
+    ADPCM_LowPassTarget.b0 = ADPCM_BitsToFloat(atomic_load_explicit(
+        &ADPCM_LowPassB0Bits, memory_order_relaxed));
+    ADPCM_LowPassTarget.b1 = ADPCM_BitsToFloat(atomic_load_explicit(
+        &ADPCM_LowPassB1Bits, memory_order_relaxed));
+    ADPCM_LowPassTarget.b2 = ADPCM_BitsToFloat(atomic_load_explicit(
+        &ADPCM_LowPassB2Bits, memory_order_relaxed));
+    ADPCM_LowPassTarget.a1 = ADPCM_BitsToFloat(atomic_load_explicit(
+        &ADPCM_LowPassA1Bits, memory_order_relaxed));
+    ADPCM_LowPassTarget.a2 = ADPCM_BitsToFloat(atomic_load_explicit(
+        &ADPCM_LowPassA2Bits, memory_order_relaxed));
+
+    if (ADPCM_LowPassTargetBits == 0) {
+        ADPCM_LowPassCurrent = ADPCM_LowPassTarget;
+        ADPCM_LowPassRampRemaining = 0;
+    } else {
+        ADPCM_LowPassRampRemaining = ADPCM_LOWPASS_RAMP_FRAMES;
+    }
+    ADPCM_LowPassTargetBits = cutoffBits;
+}
+
+static void ADPCM_AdvanceLowPassCoefficients(void)
+{
+    if (ADPCM_LowPassRampRemaining == 0) {
+        return;
+    }
+
+    const float fraction = 1.0f / (float)ADPCM_LowPassRampRemaining;
+    ADPCM_LowPassCurrent.b0 +=
+        (ADPCM_LowPassTarget.b0 - ADPCM_LowPassCurrent.b0) * fraction;
+    ADPCM_LowPassCurrent.b1 +=
+        (ADPCM_LowPassTarget.b1 - ADPCM_LowPassCurrent.b1) * fraction;
+    ADPCM_LowPassCurrent.b2 +=
+        (ADPCM_LowPassTarget.b2 - ADPCM_LowPassCurrent.b2) * fraction;
+    ADPCM_LowPassCurrent.a1 +=
+        (ADPCM_LowPassTarget.a1 - ADPCM_LowPassCurrent.a1) * fraction;
+    ADPCM_LowPassCurrent.a2 +=
+        (ADPCM_LowPassTarget.a2 - ADPCM_LowPassCurrent.a2) * fraction;
+    --ADPCM_LowPassRampRemaining;
+    if (ADPCM_LowPassRampRemaining == 0) {
+        ADPCM_LowPassCurrent = ADPCM_LowPassTarget;
+    }
 }
 
 static int ADPCM_ApplyLowPass(int sample, ADPCMFilterState *state)
 {
     const float input = (float)sample;
-    const float output = ADPCM_LowPassB0 * input
-        + ADPCM_LowPassB1 * state->x1
-        + ADPCM_LowPassB2 * state->x2
-        - ADPCM_LowPassA1 * state->y1
-        - ADPCM_LowPassA2 * state->y2;
+    const float output = ADPCM_LowPassCurrent.b0 * input
+        + ADPCM_LowPassCurrent.b1 * state->x1
+        + ADPCM_LowPassCurrent.b2 * state->x2
+        - ADPCM_LowPassCurrent.a1 * state->y1
+        - ADPCM_LowPassCurrent.a2 * state->y2;
 
     state->x2 = state->x1;
     state->x1 = input;
@@ -281,6 +366,7 @@ void FASTCALL ADPCM_Update(signed short *buffer, DWORD length, int rate, BYTE *p
     ADPCM_UpdateLowPassCoefficients();
 
 	while ( length ) {
+		ADPCM_AdvanceLowPassCoefficients();
 		if (buffer >= (signed short *)pbep) {
 			buffer = (signed short *)pbsp;
 		}
@@ -524,12 +610,25 @@ void ADPCM_Init(DWORD samplerate)
 	ADPCM_Playing = 0;
 	ADPCM_Count = 0;
 	ADPCM_SampleRate = (samplerate*12);
+	atomic_store_explicit(&ADPCM_LowPassSampleRate,
+	                      (samplerate > 0) ? samplerate : 62500,
+	                      memory_order_relaxed);
 	ADPCM_PreCounter = 0;
 	ADPCM_DmaReady = 0;
 	ADPCM_DifBuf = 0;
     memset(&ADPCM_LowPassRight, 0, sizeof(ADPCM_LowPassRight));
     memset(&ADPCM_LowPassLeft, 0, sizeof(ADPCM_LowPassLeft));
-    ADPCM_LowPassAppliedBits = 0;
+	ADPCM_LowPassTargetBits = 0;
+	ADPCM_LowPassRampRemaining = 0;
+	uint32_t cutoffBits = atomic_load_explicit(&ADPCM_LowPassCutoffBits,
+	                                           memory_order_relaxed);
+	if (cutoffBits == 0) {
+		cutoffBits = ADPCM_FloatToBits(ADPCM_LOWPASS_MIN_CUTOFF_HZ);
+	}
+	ADPCM_SetLowPassCutoff(ADPCM_BitsToFloat(cutoffBits));
+	ADPCM_UpdateLowPassCoefficients();
+	ADPCM_LowPassCurrent = ADPCM_LowPassTarget;
+	ADPCM_LowPassRampRemaining = 0;
 	OutsIp[0] = OutsIp[1] = OutsIp[2] = OutsIp[3] = -1;
 	OutsIpR[0] = OutsIpR[1] = OutsIpR[2] = OutsIpR[3] = 0;
 	OutsIpL[0] = OutsIpL[1] = OutsIpL[2] = OutsIpL[3] = 0;

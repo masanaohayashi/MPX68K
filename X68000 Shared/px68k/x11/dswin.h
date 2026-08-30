@@ -28,9 +28,9 @@ void DS_SetVolumeADPCM(long vol);
 void DS_SetVolumeMercury(long vol);
 void DSound_GetMonitorState(DSoundMonitorState* state);
 
-// Native YM2151 frames are produced by the emulator thread and consumed by
-// the platform audio callback. The consumer performs 62.5 kHz -> host-rate
-// interpolation without touching emulator state.
+// Native YM2151 and ADPCM buses are handed to the platform callback through a
+// lock-free queue. Runtime gains are applied and ramped by that callback, so a
+// settings change never asks the emulator producer to rebuild queued audio.
 void X68000_AudioRenderReset(void);
 void X68000_AudioRenderSetHostRate(unsigned int rate);
 void X68000_AudioRenderSetBusGains(float adpcmGainDB, float opmGainDB);

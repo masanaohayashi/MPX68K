@@ -47,8 +47,15 @@
 #define X68_AUDIO_GAIN_Q16_ONE 65536
 #define X68_AUDIO_BUS_GAIN_MIN_DB (-24.0f)
 #define X68_AUDIO_BUS_GAIN_MAX_DB (24.0f)
+#define X68_AUDIO_GAIN_RAMP_FRAMES 128u
+#define X68_AUDIO_UNDERRUN_FADE_FRAMES 256u
+#define X68_AUDIO_RECOVERY_RAMP_FRAMES 64u
 
-static int16_t s_audioRing[X68_AUDIO_RING_CAPACITY * 2u];
+// The producer owns the native-rate bus queue.  Keep FM and ADPCM separate
+// until the consumer so a live trim is a render-time parameter and never
+// requires the emulator to regenerate or rewrite queued audio.
+static int16_t s_audioAdpcmRing[X68_AUDIO_RING_CAPACITY * 2u];
+static int16_t s_audioOpmRing[X68_AUDIO_RING_CAPACITY * 2u];
 static _Atomic uint64_t s_audioWriteFrame;
 static _Atomic uint64_t s_audioReadFrame;
 static _Atomic uint64_t s_audioUnderruns;
@@ -64,6 +71,23 @@ static _Atomic uint64_t s_audioCaptureReadFrame;
 static _Atomic int s_audioCaptureEnabled;
 static _Atomic int32_t s_audioAdpcmGainQ16 = X68_AUDIO_GAIN_Q16_ONE;
 static _Atomic int32_t s_audioOpmGainQ16 = X68_AUDIO_GAIN_Q16_ONE;
+// These belong exclusively to the platform audio callback.  The UI only
+// publishes atomic targets; the callback ramps to them while rendering.
+static int32_t s_audioAdpcmGainCurrentQ16 = X68_AUDIO_GAIN_Q16_ONE;
+static int32_t s_audioOpmGainCurrentQ16 = X68_AUDIO_GAIN_Q16_ONE;
+static int32_t s_audioAdpcmGainTargetQ16 = X68_AUDIO_GAIN_Q16_ONE;
+static int32_t s_audioOpmGainTargetQ16 = X68_AUDIO_GAIN_Q16_ONE;
+static uint32_t s_audioAdpcmGainRampRemaining = 0;
+static uint32_t s_audioOpmGainRampRemaining = 0;
+
+// Output-side concealment for a short producer stall.  The old path wrote a
+// hard zero as soon as the emulator thread missed one device period, which
+// turned a scheduling hiccup into an audible click.  Hold and fade the last
+// rendered sample, then crossfade back when queued audio resumes.
+static float s_audioLastOutputLeft = 0.0f;
+static float s_audioLastOutputRight = 0.0f;
+static uint32_t s_audioUnderrunRun = 0;
+static uint32_t s_audioRecoveryRampRemaining = 0;
 
 DWORD ratebase = 62500;
 long DSound_PreCounter = 0;
@@ -94,6 +118,18 @@ void X68000_AudioRenderReset(void)
     atomic_store_explicit(&s_audioOverruns, 0, memory_order_relaxed);
     s_audioPhase = 0;
     s_audioPhaseValid = FALSE;
+    s_audioAdpcmGainCurrentQ16 = atomic_load_explicit(&s_audioAdpcmGainQ16,
+                                                      memory_order_relaxed);
+    s_audioOpmGainCurrentQ16 = atomic_load_explicit(&s_audioOpmGainQ16,
+                                                    memory_order_relaxed);
+    s_audioAdpcmGainTargetQ16 = s_audioAdpcmGainCurrentQ16;
+    s_audioOpmGainTargetQ16 = s_audioOpmGainCurrentQ16;
+    s_audioAdpcmGainRampRemaining = 0;
+    s_audioOpmGainRampRemaining = 0;
+    s_audioLastOutputLeft = 0.0f;
+    s_audioLastOutputRight = 0.0f;
+    s_audioUnderrunRun = 0;
+    s_audioRecoveryRampRemaining = 0;
 }
 
 void X68000_AudioRenderCaptureEnable(int enabled)
@@ -228,17 +264,31 @@ static int16_t clamp16(int value)
     return (int16_t)value;
 }
 
-static int scaleAudioSample(int sample, int32_t gainQ16)
+static int32_t rampAudioGain(int32_t *currentQ16,
+                             int32_t targetQ16,
+                             uint32_t *remainingFrames)
 {
-    int64_t scaled = (int64_t)sample * gainQ16;
-    scaled += (scaled >= 0) ? (X68_AUDIO_GAIN_Q16_ONE / 2)
-                            : -(X68_AUDIO_GAIN_Q16_ONE / 2);
-    return (int)(scaled / X68_AUDIO_GAIN_Q16_ONE);
+    if (*remainingFrames == 0) {
+        *currentQ16 = targetQ16;
+        return *currentQ16;
+    }
+
+    const int64_t difference = (int64_t)targetQ16 - *currentQ16;
+    int64_t step = difference / (int64_t)*remainingFrames;
+    if (step == 0) {
+        step = (difference > 0) ? 1 : -1;
+    }
+    *currentQ16 += (int32_t)step;
+    --*remainingFrames;
+    if (*remainingFrames == 0) {
+        *currentQ16 = targetQ16;
+    }
+    return *currentQ16;
 }
 
-static void mixNativeFrames(const int16_t *adpcm,
-                            const int *opm,
-                            uint32_t frames)
+static void enqueueNativeFrames(const int16_t *adpcm,
+                                const int *opm,
+                                uint32_t frames)
 {
     uint64_t writeFrame = atomic_load_explicit(&s_audioWriteFrame,
                                                 memory_order_relaxed);
@@ -252,20 +302,14 @@ static void mixNativeFrames(const int16_t *adpcm,
 
     const uint32_t writableFrames = (uint32_t)(X68_AUDIO_RING_CAPACITY - queuedFrames);
     const uint32_t framesToWrite = (frames < writableFrames) ? frames : writableFrames;
-    const int32_t adpcmGainQ16 = atomic_load_explicit(&s_audioAdpcmGainQ16,
-                                                       memory_order_acquire);
-    const int32_t opmGainQ16 = atomic_load_explicit(&s_audioOpmGainQ16,
-                                                     memory_order_acquire);
 
     for (uint32_t frame = 0; frame < framesToWrite; ++frame) {
         const int sampleIndex = (int)(frame * 2u);
-        const int mixedLeft = scaleAudioSample(adpcm[sampleIndex], adpcmGainQ16)
-            + scaleAudioSample(opm[sampleIndex], opmGainQ16);
-        const int mixedRight = scaleAudioSample(adpcm[sampleIndex + 1], adpcmGainQ16)
-            + scaleAudioSample(opm[sampleIndex + 1], opmGainQ16);
         const uint32_t ringIndex = (uint32_t)(writeFrame + frame) & X68_AUDIO_RING_MASK;
-        s_audioRing[ringIndex * 2u] = clamp16(mixedLeft);
-        s_audioRing[ringIndex * 2u + 1u] = clamp16(mixedRight);
+        s_audioAdpcmRing[ringIndex * 2u] = adpcm[sampleIndex];
+        s_audioAdpcmRing[ringIndex * 2u + 1u] = adpcm[sampleIndex + 1];
+        s_audioOpmRing[ringIndex * 2u] = clamp16(opm[sampleIndex]);
+        s_audioOpmRing[ringIndex * 2u + 1u] = clamp16(opm[sampleIndex + 1]);
     }
 
     writeFrame += framesToWrite;
@@ -293,13 +337,40 @@ void X68000_AudioRenderProduce(unsigned int frames)
                      (BYTE *)adpcmBuffer,
                      (BYTE *)adpcmBuffer + bytes);
         OPM_GenerateNative(opmBuffer, (int)chunk);
-        mixNativeFrames(adpcmBuffer, opmBuffer, chunk);
+        enqueueNativeFrames(adpcmBuffer, opmBuffer, chunk);
         frames -= chunk;
+    }
+}
+
+static void updateAudioGainTargets(void)
+{
+    const int32_t adpcmGainTargetQ16 = atomic_load_explicit(
+        &s_audioAdpcmGainQ16, memory_order_acquire);
+    const int32_t opmGainTargetQ16 = atomic_load_explicit(
+        &s_audioOpmGainQ16, memory_order_acquire);
+
+    if (adpcmGainTargetQ16 != s_audioAdpcmGainTargetQ16) {
+        s_audioAdpcmGainTargetQ16 = adpcmGainTargetQ16;
+        s_audioAdpcmGainRampRemaining = X68_AUDIO_GAIN_RAMP_FRAMES;
+    }
+    if (opmGainTargetQ16 != s_audioOpmGainTargetQ16) {
+        s_audioOpmGainTargetQ16 = opmGainTargetQ16;
+        s_audioOpmGainRampRemaining = X68_AUDIO_GAIN_RAMP_FRAMES;
     }
 }
 
 static int audioRenderNext(float *left, float *right)
 {
+    updateAudioGainTargets();
+    const int32_t adpcmGainQ16 = rampAudioGain(
+        &s_audioAdpcmGainCurrentQ16,
+        s_audioAdpcmGainTargetQ16,
+        &s_audioAdpcmGainRampRemaining);
+    const int32_t opmGainQ16 = rampAudioGain(
+        &s_audioOpmGainCurrentQ16,
+        s_audioOpmGainTargetQ16,
+        &s_audioOpmGainRampRemaining);
+
     uint64_t readFrame = atomic_load_explicit(&s_audioReadFrame,
                                                memory_order_acquire);
     if (!s_audioPhaseValid) {
@@ -316,8 +387,16 @@ static int audioRenderNext(float *left, float *right)
     const uint64_t writeFrame = atomic_load_explicit(&s_audioWriteFrame,
                                                       memory_order_acquire);
     if (baseFrame + 1u >= writeFrame) {
-        *left = 0.0f;
-        *right = 0.0f;
+        if (s_audioUnderrunRun < X68_AUDIO_UNDERRUN_FADE_FRAMES) {
+            ++s_audioUnderrunRun;
+        }
+        const float fade = 1.0f -
+            (float)s_audioUnderrunRun / (float)X68_AUDIO_UNDERRUN_FADE_FRAMES;
+        *left = s_audioLastOutputLeft * fade;
+        *right = s_audioLastOutputRight * fade;
+        s_audioLastOutputLeft = *left;
+        s_audioLastOutputRight = *right;
+        s_audioRecoveryRampRemaining = 0;
         s_audioPhase = writeFrame << 32;
         atomic_store_explicit(&s_audioReadFrame, writeFrame, memory_order_release);
         return FALSE;
@@ -327,13 +406,46 @@ static int audioRenderNext(float *left, float *right)
     const uint32_t nextIndex = (currentIndex + 1u) & X68_AUDIO_RING_MASK;
     const float fraction = (float)(s_audioPhase & UINT64_C(0xffffffff))
         / 4294967296.0f;
-    const float left0 = (float)s_audioRing[currentIndex * 2u];
-    const float left1 = (float)s_audioRing[nextIndex * 2u];
-    const float right0 = (float)s_audioRing[currentIndex * 2u + 1u];
-    const float right1 = (float)s_audioRing[nextIndex * 2u + 1u];
+    const float adpcmLeft0 = (float)s_audioAdpcmRing[currentIndex * 2u];
+    const float adpcmLeft1 = (float)s_audioAdpcmRing[nextIndex * 2u];
+    const float adpcmRight0 = (float)s_audioAdpcmRing[currentIndex * 2u + 1u];
+    const float adpcmRight1 = (float)s_audioAdpcmRing[nextIndex * 2u + 1u];
+    const float opmLeft0 = (float)s_audioOpmRing[currentIndex * 2u];
+    const float opmLeft1 = (float)s_audioOpmRing[nextIndex * 2u];
+    const float opmRight0 = (float)s_audioOpmRing[currentIndex * 2u + 1u];
+    const float opmRight1 = (float)s_audioOpmRing[nextIndex * 2u + 1u];
 
-    *left = (left0 + (left1 - left0) * fraction) / 32768.0f;
-    *right = (right0 + (right1 - right0) * fraction) / 32768.0f;
+    const float adpcmLeft = (adpcmLeft0 + (adpcmLeft1 - adpcmLeft0) * fraction)
+        / 32768.0f;
+    const float adpcmRight = (adpcmRight0
+        + (adpcmRight1 - adpcmRight0) * fraction) / 32768.0f;
+    const float opmLeft = (opmLeft0 + (opmLeft1 - opmLeft0) * fraction)
+        / 32768.0f;
+    const float opmRight = (opmRight0 + (opmRight1 - opmRight0) * fraction)
+        / 32768.0f;
+    float renderedLeft = adpcmLeft * ((float)adpcmGainQ16 / X68_AUDIO_GAIN_Q16_ONE)
+        + opmLeft * ((float)opmGainQ16 / X68_AUDIO_GAIN_Q16_ONE);
+    float renderedRight = adpcmRight * ((float)adpcmGainQ16 / X68_AUDIO_GAIN_Q16_ONE)
+        + opmRight * ((float)opmGainQ16 / X68_AUDIO_GAIN_Q16_ONE);
+
+    if (s_audioUnderrunRun != 0) {
+        s_audioRecoveryRampRemaining = X68_AUDIO_RECOVERY_RAMP_FRAMES;
+        s_audioUnderrunRun = 0;
+    }
+    if (s_audioRecoveryRampRemaining != 0) {
+        const float fraction = 1.0f /
+            (float)s_audioRecoveryRampRemaining;
+        renderedLeft = s_audioLastOutputLeft
+            + (renderedLeft - s_audioLastOutputLeft) * fraction;
+        renderedRight = s_audioLastOutputRight
+            + (renderedRight - s_audioLastOutputRight) * fraction;
+        --s_audioRecoveryRampRemaining;
+    }
+
+    *left = renderedLeft;
+    *right = renderedRight;
+    s_audioLastOutputLeft = renderedLeft;
+    s_audioLastOutputRight = renderedRight;
 
     s_audioPhase += s_audioPhaseStep;
     const uint64_t consumedFrame = s_audioPhase >> 32;
