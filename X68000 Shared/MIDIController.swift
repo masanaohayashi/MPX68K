@@ -41,27 +41,38 @@ public struct MPX68KInternalAudioSettings: Equatable {
     public static let bufferFrameOptions = [16, 32, 64, 128, 256, 512]
     public static let busGainRange = -24.0...24.0
     public static let busGainStep = 0.5
+    public static let adpcmLowPassCutoffRange = 3_300.0...20_000.0
+    public static let adpcmLowPassCutoffDefault = 3_300.0
 
     public var mode: MPX68KInternalAudioRenderMode
     public var bufferFrames: Int
     public var adpcmGainDB: Double
     public var opmGainDB: Double
+    public var adpcmLowPassCutoffHz: Double
 
     public init(mode: MPX68KInternalAudioRenderMode = .asynchronous,
                 bufferFrames: Int = 64,
                 adpcmGainDB: Double = 0.0,
-                opmGainDB: Double = 0.0) {
+                opmGainDB: Double = 0.0,
+                adpcmLowPassCutoffHz: Double = 3_300.0) {
         self.mode = mode
         self.bufferFrames = Self.bufferFrameOptions.contains(bufferFrames)
             ? bufferFrames
             : 64
         self.adpcmGainDB = Self.normalizedBusGain(adpcmGainDB)
         self.opmGainDB = Self.normalizedBusGain(opmGainDB)
+        self.adpcmLowPassCutoffHz = Self.normalizedLowPassCutoff(adpcmLowPassCutoffHz)
     }
 
     private static func normalizedBusGain(_ value: Double) -> Double {
         guard value.isFinite else { return 0.0 }
         return min(max(value, busGainRange.lowerBound), busGainRange.upperBound)
+    }
+
+    private static func normalizedLowPassCutoff(_ value: Double) -> Double {
+        guard value.isFinite else { return adpcmLowPassCutoffDefault }
+        return min(max(value, adpcmLowPassCutoffRange.lowerBound),
+                   adpcmLowPassCutoffRange.upperBound)
     }
 }
 

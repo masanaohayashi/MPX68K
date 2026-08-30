@@ -140,6 +140,7 @@ class GameScene: SKScene {
     private let internalAudioBufferFramesDefaultsKey = "InternalAudio.BufferFrames"
     private let internalAudioADPCMGainDefaultsKey = "InternalAudio.ADPCMGainDB"
     private let internalAudioOPMGainDefaultsKey = "InternalAudio.OPMGainDB"
+    private let internalAudioADPCMLowPassCutoffDefaultsKey = "InternalAudio.ADPCMLowPassCutoffHz"
     private var midiOutputSettings = MPX68KMIDIOutputSettings()
     private var audioUnitSettings = MPX68KAudioUnitSettings()
     private var internalAudioSettings = MPX68KInternalAudioSettings()
@@ -1780,11 +1781,15 @@ class GameScene: SKScene {
             as? NSNumber)?.doubleValue ?? 0.0
         let opmGainDB = (defaults.object(forKey: internalAudioOPMGainDefaultsKey)
             as? NSNumber)?.doubleValue ?? 0.0
+        let adpcmLowPassCutoffHz = (defaults.object(
+            forKey: internalAudioADPCMLowPassCutoffDefaultsKey
+        ) as? NSNumber)?.doubleValue ?? MPX68KInternalAudioSettings.adpcmLowPassCutoffDefault
         internalAudioSettings = MPX68KInternalAudioSettings(
             mode: renderMode,
             bufferFrames: bufferFrames,
             adpcmGainDB: adpcmGainDB,
-            opmGainDB: opmGainDB
+            opmGainDB: opmGainDB,
+            adpcmLowPassCutoffHz: adpcmLowPassCutoffHz
         )
     }
 
@@ -1819,7 +1824,8 @@ class GameScene: SKScene {
             mode: settings.mode,
             bufferFrames: settings.bufferFrames,
             adpcmGainDB: settings.adpcmGainDB,
-            opmGainDB: settings.opmGainDB
+            opmGainDB: settings.opmGainDB,
+            adpcmLowPassCutoffHz: settings.adpcmLowPassCutoffHz
         )
         guard let stream = audioStream else {
             return "Audio stream is not ready"
@@ -1831,6 +1837,8 @@ class GameScene: SKScene {
             userDefaults.set(normalized.bufferFrames, forKey: internalAudioBufferFramesDefaultsKey)
             userDefaults.set(normalized.adpcmGainDB, forKey: internalAudioADPCMGainDefaultsKey)
             userDefaults.set(normalized.opmGainDB, forKey: internalAudioOPMGainDefaultsKey)
+            userDefaults.set(normalized.adpcmLowPassCutoffHz,
+                              forKey: internalAudioADPCMLowPassCutoffDefaultsKey)
         }
         if let error = error {
             warningLog("Built-in audio configuration: \(error)", category: .audio)
@@ -1846,7 +1854,8 @@ class GameScene: SKScene {
             mode: internalAudioSettings.mode,
             bufferFrames: internalAudioSettings.bufferFrames,
             adpcmGainDB: adpcmGainDB,
-            opmGainDB: opmGainDB
+            opmGainDB: opmGainDB,
+            adpcmLowPassCutoffHz: internalAudioSettings.adpcmLowPassCutoffHz
         )
         guard let stream = audioStream else {
             return "Audio stream is not ready"
@@ -1860,6 +1869,29 @@ class GameScene: SKScene {
         if persist {
             userDefaults.set(normalized.adpcmGainDB, forKey: internalAudioADPCMGainDefaultsKey)
             userDefaults.set(normalized.opmGainDB, forKey: internalAudioOPMGainDefaultsKey)
+        }
+        return nil
+    }
+
+    @discardableResult
+    func applyInternalAudioLowPass(cutoffHz: Double,
+                                   persist: Bool = true) -> String? {
+        let normalized = MPX68KInternalAudioSettings(
+            mode: internalAudioSettings.mode,
+            bufferFrames: internalAudioSettings.bufferFrames,
+            adpcmGainDB: internalAudioSettings.adpcmGainDB,
+            opmGainDB: internalAudioSettings.opmGainDB,
+            adpcmLowPassCutoffHz: cutoffHz
+        )
+        guard let stream = audioStream else {
+            return "Audio stream is not ready"
+        }
+
+        stream.applyInternalAudioLowPass(cutoffHz: normalized.adpcmLowPassCutoffHz)
+        internalAudioSettings = normalized
+        if persist {
+            userDefaults.set(normalized.adpcmLowPassCutoffHz,
+                              forKey: internalAudioADPCMLowPassCutoffDefaultsKey)
         }
         return nil
     }

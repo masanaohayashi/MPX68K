@@ -212,6 +212,11 @@ void X68000_AudioRenderSetBusGains(float adpcmGainDB, float opmGainDB)
                           memory_order_release);
 }
 
+void X68000_AudioRenderSetADPCMLowPassCutoff(float cutoffHz)
+{
+    ADPCM_SetLowPassCutoff(cutoffHz);
+}
+
 static int16_t clamp16(int value)
 {
     if (value > 32767) {

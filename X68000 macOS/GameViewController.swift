@@ -2255,6 +2255,7 @@ private struct MIDIAndAudioSettingsPanel: View {
     @State private var internalAudioBufferFrames: Int
     @State private var adpcmGainDB: Double
     @State private var opmGainDB: Double
+    @State private var adpcmLowPassCutoffHz: Double
     @State private var isApplyingAudioUnit: Bool
     @State private var midiDestinations: [MPX68KMIDIDestination]
     @State private var serialDevices: [MPX68KRS232CDevice]
@@ -2287,6 +2288,7 @@ private struct MIDIAndAudioSettingsPanel: View {
         _internalAudioBufferFrames = State(initialValue: internalAudioSettings.bufferFrames)
         _adpcmGainDB = State(initialValue: internalAudioSettings.adpcmGainDB)
         _opmGainDB = State(initialValue: internalAudioSettings.opmGainDB)
+        _adpcmLowPassCutoffHz = State(initialValue: internalAudioSettings.adpcmLowPassCutoffHz)
         _isApplyingAudioUnit = State(initialValue: audioSettings.enabled)
         _midiDestinations = State(initialValue: destinations)
         _serialDevices = State(initialValue: devices)
@@ -2346,6 +2348,7 @@ private struct MIDIAndAudioSettingsPanel: View {
         .onChange(of: internalAudioBufferFrames) { _ in applyInternalAudioSettings() }
         .onChange(of: adpcmGainDB) { _ in applyInternalAudioGains() }
         .onChange(of: opmGainDB) { _ in applyInternalAudioGains() }
+        .onChange(of: adpcmLowPassCutoffHz) { _ in applyInternalAudioLowPass() }
         .onAppear {
             if useAudioUnit {
                 applyAudioUnitSettings()
@@ -2385,6 +2388,18 @@ private struct MIDIAndAudioSettingsPanel: View {
             }
 
             HStack(spacing: 12) {
+                Text("ADPCM LPF")
+                    .frame(width: 90, alignment: .leading)
+                Slider(
+                    value: $adpcmLowPassCutoffHz,
+                    in: MPX68KInternalAudioSettings.adpcmLowPassCutoffRange
+                )
+                Text(String(format: "%.1f kHz", adpcmLowPassCutoffHz / 1000.0))
+                    .font(.system(size: 12, design: .monospaced))
+                    .frame(width: 70, alignment: .trailing)
+            }
+
+            HStack(spacing: 12) {
                 Text("FM trim")
                     .frame(width: 90, alignment: .leading)
                 Slider(
@@ -2402,10 +2417,14 @@ private struct MIDIAndAudioSettingsPanel: View {
                 opmGainDB = 0.0
             }
 
+            Button("Reset ADPCM low-pass") {
+                adpcmLowPassCutoffHz = MPX68KInternalAudioSettings.adpcmLowPassCutoffDefault
+            }
+
             Text(
                 "YM2151 runs at 62,500 Hz internally and is downsampled to the audio device rate. "
                 + "Direct AudioUnit is the low-latency path; AudioQueue is the compatibility path. "
-                + "Trims are applied live after the legacy FM/ADPCM volume settings."
+                + "Trims and the ADPCM low-pass cutoff are applied live after the legacy FM/ADPCM volume settings."
             )
                 .font(.system(size: 12))
                 .foregroundColor(.secondary)
@@ -2561,12 +2580,22 @@ private struct MIDIAndAudioSettingsPanel: View {
             mode: internalAudioMode,
             bufferFrames: internalAudioBufferFrames,
             adpcmGainDB: adpcmGainDB,
-            opmGainDB: opmGainDB
+            opmGainDB: opmGainDB,
+            adpcmLowPassCutoffHz: adpcmLowPassCutoffHz
         )
         if let error = scene.applyInternalAudioSettings(settings) {
             statusMessage = error
         } else {
             statusMessage = "Built-in audio settings saved"
+        }
+    }
+
+    private func applyInternalAudioLowPass() {
+        guard let scene = sceneReference.scene else { return }
+        if let error = scene.applyInternalAudioLowPass(cutoffHz: adpcmLowPassCutoffHz) {
+            statusMessage = error
+        } else {
+            statusMessage = "ADPCM low-pass setting saved"
         }
     }
 

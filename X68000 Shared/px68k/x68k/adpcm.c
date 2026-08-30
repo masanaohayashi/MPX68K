@@ -5,6 +5,9 @@
 // ---------------------------------------------------------------------------------------
 
 #include <math.h>
+#include <stdint.h>
+#include <stdatomic.h>
+#include <string.h>
 
 #include "common.h"
 #include "prop.h"
@@ -25,6 +28,12 @@ static void ADPCM_WriteOne_Optimized(int val);
 #define FM_IPSCALE         256L
 
 #define OVERSAMPLEMUL      2
+
+// X68000 hardware has a deliberately dark analog ADPCM output stage. The
+// macOS setting keeps that character by default while allowing the cutoff to
+// be opened up for modern audio devices.
+#define ADPCM_LOWPASS_MIN_CUTOFF_HZ 3300.0f
+#define ADPCM_LOWPASS_MAX_CUTOFF_HZ 20000.0f
 
 #define INTERPOLATE(y, x)	\
 	(((((((-y[0]+3*y[1]-3*y[2]+y[3]) * x + FM_IPSCALE/2) / FM_IPSCALE \
@@ -57,15 +66,125 @@ static int ADPCM_DifBuf = 0;
 
 static int ADPCM_Pan = 0x00;
 static int OldR = 0, OldL = 0;
-static int Outs[8];
 static int OutsIp[4];
 static int OutsIpR[4];
 static int OutsIpL[4];
+
+typedef struct {
+    float x1;
+    float x2;
+    float y1;
+    float y2;
+} ADPCMFilterState;
+
+// The UI thread publishes only the requested cutoff. Coefficients and filter
+// history are owned by the emulator thread, so changing the slider never
+// takes a lock or performs a partially-updated multi-value read in audio
+// production.
+static _Atomic uint32_t ADPCM_LowPassCutoffBits;
+static uint32_t ADPCM_LowPassAppliedBits = 0;
+static float ADPCM_LowPassB0 = 1.0f;
+static float ADPCM_LowPassB1 = 0.0f;
+static float ADPCM_LowPassB2 = 0.0f;
+static float ADPCM_LowPassA1 = 0.0f;
+static float ADPCM_LowPassA2 = 0.0f;
+static ADPCMFilterState ADPCM_LowPassRight;
+static ADPCMFilterState ADPCM_LowPassLeft;
 
 // DC blocking filter state (1st order high-pass)
 static double dc_filter_x1 = 0.0;  // Previous input
 static double dc_filter_y1 = 0.0;  // Previous output
 static const double DC_FILTER_ALPHA = 0.995;  // High-pass cutoff ~3.5Hz at 22kHz
+
+static uint32_t ADPCM_FloatToBits(float value)
+{
+    uint32_t bits = 0;
+    memcpy(&bits, &value, sizeof(bits));
+    return bits;
+}
+
+static float ADPCM_BitsToFloat(uint32_t bits)
+{
+    float value = ADPCM_LOWPASS_MIN_CUTOFF_HZ;
+    memcpy(&value, &bits, sizeof(value));
+    return value;
+}
+
+static float ADPCM_NormalizeLowPassCutoff(float cutoffHz)
+{
+    if (!isfinite(cutoffHz)) {
+        return ADPCM_LOWPASS_MIN_CUTOFF_HZ;
+    }
+    if (cutoffHz < ADPCM_LOWPASS_MIN_CUTOFF_HZ) {
+        return ADPCM_LOWPASS_MIN_CUTOFF_HZ;
+    }
+    if (cutoffHz > ADPCM_LOWPASS_MAX_CUTOFF_HZ) {
+        return ADPCM_LOWPASS_MAX_CUTOFF_HZ;
+    }
+    return cutoffHz;
+}
+
+void ADPCM_SetLowPassCutoff(float cutoffHz)
+{
+    cutoffHz = ADPCM_NormalizeLowPassCutoff(cutoffHz);
+    atomic_store_explicit(&ADPCM_LowPassCutoffBits,
+                          ADPCM_FloatToBits(cutoffHz),
+                          memory_order_release);
+}
+
+static void ADPCM_UpdateLowPassCoefficients(void)
+{
+    uint32_t cutoffBits = atomic_load_explicit(&ADPCM_LowPassCutoffBits,
+                                               memory_order_acquire);
+    if (cutoffBits == 0) {
+        cutoffBits = ADPCM_FloatToBits(ADPCM_LOWPASS_MIN_CUTOFF_HZ);
+    }
+    if (cutoffBits == ADPCM_LowPassAppliedBits) {
+        return;
+    }
+
+    const double sampleRate = (ADPCM_SampleRate > 0)
+        ? (double)ADPCM_SampleRate / 12.0
+        : 62500.0;
+    const double requestedCutoff =
+        (double)ADPCM_NormalizeLowPassCutoff(ADPCM_BitsToFloat(cutoffBits));
+    const double maximumCutoff = fmin((double)ADPCM_LOWPASS_MAX_CUTOFF_HZ,
+                                      sampleRate * 0.49);
+    const double minimumCutoff = fmin((double)ADPCM_LOWPASS_MIN_CUTOFF_HZ,
+                                      maximumCutoff);
+    const double cutoff = fmin(fmax(minimumCutoff, requestedCutoff),
+                               maximumCutoff);
+    const double angularFrequency = 2.0 * acos(-1.0) * cutoff / sampleRate;
+    const double cosine = cos(angularFrequency);
+    const double alpha = sin(angularFrequency) /
+        (2.0 * 0.70710678118654752440);
+    const double a0 = 1.0 + alpha;
+
+    // A 2-pole Butterworth low-pass gives a smooth, continuously adjustable
+    // approximation of the X68000's external analog ADPCM filter.
+    ADPCM_LowPassB0 = (float)(((1.0 - cosine) * 0.5) / a0);
+    ADPCM_LowPassB1 = (float)((1.0 - cosine) / a0);
+    ADPCM_LowPassB2 = ADPCM_LowPassB0;
+    ADPCM_LowPassA1 = (float)((-2.0 * cosine) / a0);
+    ADPCM_LowPassA2 = (float)((1.0 - alpha) / a0);
+    ADPCM_LowPassAppliedBits = cutoffBits;
+}
+
+static int ADPCM_ApplyLowPass(int sample, ADPCMFilterState *state)
+{
+    const float input = (float)sample;
+    const float output = ADPCM_LowPassB0 * input
+        + ADPCM_LowPassB1 * state->x1
+        + ADPCM_LowPassB2 * state->x2
+        - ADPCM_LowPassA1 * state->y1
+        - ADPCM_LowPassA2 * state->y2;
+
+    state->x2 = state->x1;
+    state->x1 = input;
+    state->y2 = state->y1;
+    state->y1 = output;
+    return (int)lrintf(output);
+}
 
 int ADPCM_IsReady(void)
 {
@@ -159,6 +278,7 @@ void FASTCALL ADPCM_Update(signed short *buffer, DWORD length, int rate, BYTE *p
 	signed int outl, outr;
 
 	if ( length<=0 ) return;
+    ADPCM_UpdateLowPassCoefficients();
 
 	while ( length ) {
 		if (buffer >= (signed short *)pbep) {
@@ -186,32 +306,16 @@ void FASTCALL ADPCM_Update(signed short *buffer, DWORD length, int rate, BYTE *p
 			}
 		}
 
-		if ( Config.Sound_LPF ) {
-			outr = (int)(outr*40*ADPCM_VolumeShift);
-			outs = (outr + Outs[3]*2 + Outs[2] + Outs[1]*157 - Outs[0]*61) >> 8;
-			Outs[2] = Outs[3];
-			Outs[3] = outr;
-			Outs[0] = Outs[1];
-			Outs[1] = outs;
-		} else {
-			outs = (int)(outr*ADPCM_VolumeShift);
-		}
+        outs = ADPCM_ApplyLowPass((int)(outr*ADPCM_VolumeShift),
+                                   &ADPCM_LowPassRight);
 
 		OutsIpR[0] = OutsIpR[1];
 		OutsIpR[1] = OutsIpR[2];
 		OutsIpR[2] = OutsIpR[3];
 		OutsIpR[3] = outs;
 
-		if ( Config.Sound_LPF ) {
-			outl = (int)(outl*40*ADPCM_VolumeShift);
-			outs = (outl + Outs[7]*2 + Outs[6] + Outs[5]*157 - Outs[4]*61) >> 8;
-			Outs[6] = Outs[7];
-			Outs[7] = outl;
-			Outs[4] = Outs[5];
-			Outs[5] = outs;
-		} else {
-			outs = (int)(outl*ADPCM_VolumeShift);
-		}
+        outs = ADPCM_ApplyLowPass((int)(outl*ADPCM_VolumeShift),
+                                   &ADPCM_LowPassLeft);
 
 		OutsIpL[0] = OutsIpL[1];
 		OutsIpL[1] = OutsIpL[2];
@@ -423,7 +527,9 @@ void ADPCM_Init(DWORD samplerate)
 	ADPCM_PreCounter = 0;
 	ADPCM_DmaReady = 0;
 	ADPCM_DifBuf = 0;
-	memset(Outs, 0, sizeof(Outs));
+    memset(&ADPCM_LowPassRight, 0, sizeof(ADPCM_LowPassRight));
+    memset(&ADPCM_LowPassLeft, 0, sizeof(ADPCM_LowPassLeft));
+    ADPCM_LowPassAppliedBits = 0;
 	OutsIp[0] = OutsIp[1] = OutsIp[2] = OutsIp[3] = -1;
 	OutsIpR[0] = OutsIpR[1] = OutsIpR[2] = OutsIpR[3] = 0;
 	OutsIpL[0] = OutsIpL[1] = OutsIpL[2] = OutsIpL[3] = 0;

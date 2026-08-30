@@ -246,6 +246,9 @@ class AudioStream {
             adpcmGainDB: internalAudioSettings.adpcmGainDB,
             opmGainDB: internalAudioSettings.opmGainDB
         )
+        applyInternalAudioLowPass(
+            cutoffHz: internalAudioSettings.adpcmLowPassCutoffHz
+        )
         #endif
         X68000_AudioRenderReset()
 
@@ -480,6 +483,10 @@ class AudioStream {
 
     func applyInternalAudioGains(adpcmGainDB: Double, opmGainDB: Double) {
         X68000_AudioRenderSetBusGains(Float(adpcmGainDB), Float(opmGainDB))
+    }
+
+    func applyInternalAudioLowPass(cutoffHz: Double) {
+        X68000_AudioRenderSetADPCMLowPassCutoff(Float(cutoffHz))
     }
 
     #endif
