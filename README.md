@@ -1,11 +1,11 @@
 # MPX68K
 
-A Sharp X68000 computer emulator for macOS platforms, based on the px68k emulator core.
+A Sharp X68000 computer emulator for macOS and iOS platforms, based on the px68k emulator core.
 This repository is indirectly a fork of Mr. Hissorii's [px68k](https://github.com/hissorii/px68k). Based on that source code, [Goroman](https://github.com/GOROman) converted it for iOS, and [YosAwed](https://github.com/YosAwed) adapted it for macOS.
 
 ## Overview
 
-MPX68K provides authentic Sharp X68000 emulation with modern Swift UI frameworks, bridging low-level C emulation code with SpriteKit for an optimal user experience on both Apple Silicon and Intel Macs.
+MPX68K provides authentic Sharp X68000 emulation with modern Swift UI frameworks, bridging low-level C emulation code with SpriteKit on macOS, iPhone, and iPad. The project contains separate macOS and iOS application targets over the shared emulator core.
 
 ## Changes in This Fork
 
@@ -79,6 +79,11 @@ MPX68K repository:
 - Minimum 4GB RAM
 - 1GB free disk space for ROM and disk images
 
+### iOS
+- iOS 15.0 or later
+- iPhone or iPad
+- Original X68000 ROM files and disk images supplied through the app's document/file-sharing flow
+
 ## ROM Files Setup
 
 MPX68K requires original SHARP X68000 system ROM files to function properly. These files are **not included** with the emulator and must be obtained separately.
@@ -148,12 +153,12 @@ You need Apple Developer Account for using XCode and certification.
    ```
 
 3. **Build the project:**
-   - Select your target platform (macOS)
+   - Select `X68000 macOS` or `X68000 iOS` as the scheme
    - Build and run (⌘+R)
 
 ### Dependencies
 The project includes the c68k CPU emulator and the ymfm YM2151 core. c68k is
-built automatically by the Xcode project; ymfm is pinned as the
+built automatically by each Xcode application target; ymfm is pinned as the
 `third_party/ymfm` git submodule and must be initialized before building.
 
 ## Usage
@@ -412,6 +417,9 @@ MPX68K/
 ├── X68000 macOS/           # macOS-specific code
 │   ├── AppDelegate.swift   # Menu integration
 │   └── GameViewController.swift # Main view controller
+├── X68000 iOS/             # iOS-specific app lifecycle and UI
+│   ├── AppDelegate.swift
+│   └── GameViewController.swift
 ├── c68k/                   # M68000 CPU emulator (static lib)
 │   └── c68k.xcodeproj      # Independent build system
 ├── CLAUDE.md               # Development guidelines
@@ -424,6 +432,7 @@ MPX68K/
 
 #### Prerequisites
 - Xcode 15.0 or later (with the macOS SDK)
+- iOS SDK support for the `X68000 iOS` target
 - macOS 12.0 (Monterey) or later as the deployment target
 - Swift 5.9+
 
@@ -434,6 +443,10 @@ xcodebuild -project X68000.xcodeproj -scheme "X68000 macOS" -configuration Debug
 
 # Release build
 xcodebuild -project X68000.xcodeproj -scheme "X68000 macOS" -configuration Release build
+
+# iOS Simulator build
+xcodebuild -project X68000.xcodeproj -scheme "X68000 iOS" -configuration Debug \
+  -destination 'generic/platform=iOS Simulator' build
 
 # Archive for distribution
 xcodebuild -project X68000.xcodeproj -scheme "X68000 macOS" -configuration Release archive

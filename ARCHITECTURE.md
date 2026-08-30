@@ -1,6 +1,6 @@
 # MPX68K Software Architecture
 
-This document describes the software architecture of MPX68K, a Sharp X68000 emulator for macOS. (The former iOS target was removed in August 2025; the shared/platform split in the source layout is a legacy of that era.)
+This document describes the software architecture of MPX68K, a Sharp X68000 emulator for macOS and iOS. The active application targets are `X68000 macOS` and `X68000 iOS`; both use the shared px68k core and c68k CPU library.
 
 ## Overall System Architecture
 
@@ -8,6 +8,7 @@ This document describes the software architecture of MPX68K, a Sharp X68000 emul
 graph TB
     subgraph "User Interface Layer"
         macOS[macOS App]
+        iOS[iOS App]
     end
     
     subgraph "Swift Shared Layer"
@@ -37,6 +38,7 @@ graph TB
     end
     
     macOS --> GameScene
+    iOS --> GameScene
     
     GameScene --> SpriteKit
     GameScene --> JoyCard
@@ -58,6 +60,7 @@ graph TB
     M68K --> C68K
     
     style macOS fill:#e8f5e8
+    style iOS fill:#e3f2fd
     style GameScene fill:#fff3e0
     style PX68K fill:#fce4ec
     style C68K fill:#f3e5f5
@@ -74,6 +77,12 @@ graph LR
         DragDrop[Drag & Drop]
         WindowMgmt[Window Management]
     end
+
+    subgraph "iOS Platform"
+        iOSUI[iOS UI Layer]
+        TouchKeyboard[Touch / External Keyboard Input]
+        Storyboards[UIKit Storyboards]
+    end
     
     subgraph "Shared Core"
         SharedCore[X68000 Shared<br/>Business Logic]
@@ -84,6 +93,9 @@ graph LR
     KeyMouse --> SharedCore
     DragDrop --> SharedCore
     WindowMgmt --> SharedCore
+    iOSUI --> SharedCore
+    TouchKeyboard --> SharedCore
+    Storyboards --> iOSUI
     
     style macOSUI fill:#e8f5e8
     style SharedCore fill:#fff3e0
@@ -319,7 +331,7 @@ graph TD
 
 ### 1. Multi-Platform Strategy
 - **Shared Core**: Common business logic and emulation engine
-- **Platform UI**: macOS presentation layer kept separate from the shared core
+- **Platform UI**: macOS and iOS presentation layers kept separate from the shared core
 - **Conditional Compilation**: Platform-specific code using `#if os()` directives
 
 ### 2. Document-Based Architecture

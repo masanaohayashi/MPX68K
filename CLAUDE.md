@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-MPX68K is a Sharp X68000 computer emulator for macOS, based on the px68k emulator core. The project bridges low-level C emulation code with modern Swift UI frameworks using SpriteKit. This is a document-based application with deep integration into Apple's ecosystem. (An earlier iOS target was removed in August 2025; the only build target today is macOS.)
+MPX68K is a Sharp X68000 computer emulator for macOS and iOS, based on the px68k emulator core. The project bridges low-level C emulation code with modern Swift UI frameworks using SpriteKit. This is a document-based application with deep integration into Apple's ecosystem. The shared core is built by both the `X68000 macOS` and `X68000 iOS` application targets.
 
 ## Build Commands
 
@@ -16,9 +16,15 @@ open X68000.xcodeproj
 # List available schemes and targets
 xcodebuild -list -project X68000.xcodeproj
 
-# Build macOS version (the only target)
+# Build macOS version
 xcodebuild -project X68000.xcodeproj -scheme "X68000 macOS" -configuration Debug
 xcodebuild -project X68000.xcodeproj -scheme "X68000 macOS" -configuration Release
+
+# Build iOS Simulator version
+xcodebuild -project X68000.xcodeproj -scheme "X68000 iOS" -configuration Debug \
+  -destination 'generic/platform=iOS Simulator'
+xcodebuild -project X68000.xcodeproj -scheme "X68000 iOS" -configuration Release \
+  -destination 'generic/platform=iOS Simulator'
 
 # Clean build artifacts
 xcodebuild clean -project X68000.xcodeproj -scheme "X68000 macOS"
@@ -32,7 +38,9 @@ make -C tests/core
 ```
 
 ### Dependencies
-The project has a critical dependency on the c68k CPU emulator that must be built first:
+The project has a critical dependency on the c68k CPU emulator. Each application
+target declares its matching c68k target as an Xcode target dependency, so Xcode
+builds it automatically. To build the dependency by itself:
 ```bash
 # Build C68K static library (required dependency)
 # The macOS app links against libc68k_mac_DEBUG.a / libc68k_mac.a,
@@ -43,9 +51,10 @@ xcodebuild -project c68k/c68k.xcodeproj -scheme "c68k mac" -configuration Debug
 ## Architecture
 
 ### Design Pattern
-The project keeps a shared core separated from the platform presentation layer (a layout inherited from the former iOS/macOS dual-target era):
+The project keeps a shared core separated from the platform presentation layers:
 - **X68000 Shared/**: Business logic and emulation core
 - **X68000 macOS/**: macOS-specific UI, menu integration, and window management
+- **X68000 iOS/**: iOS app lifecycle, SpriteKit view controller, and storyboards
 - **c68k/**: Independent M68000 CPU emulator built as static library
 
 ### Core Components
@@ -88,6 +97,11 @@ The project keeps a shared core separated from the platform presentation layer (
 - **Drag & Drop**: Multi-file support with automatic drive assignment
 - **Screen Rotation**: 90-degree rotation support for vertical games (tate mode)
 
+### iOS Platform
+- **Native iOS Target**: `X68000 iOS` builds for iPhone and iPad from the shared emulation core
+- **SpriteKit Presentation**: iOS-specific app delegate, view controller, and storyboards
+- **Touch / External Keyboard Input**: UIKit lifecycle and HID keyboard integration
+
 ## Development Guidelines
 
 ### Swift-C Interoperability
@@ -97,9 +111,9 @@ The project keeps a shared core separated from the platform presentation layer (
 - Memory management across Swift-C boundary requires careful attention
 
 ### Build Dependencies
-- **Critical**: C68K static library must be built before main project
-- The main project fails to build without libc68k.a dependency
-- Clean builds require rebuilding both c68k and main project
+- **Critical**: The application target must keep its matching c68k target dependency
+- Xcode builds the required `libc68k` variant automatically when building an app scheme
+- The standalone c68k schemes can be used when inspecting or rebuilding the dependency directly
 
 ### File System Architecture
 - **ROM Loading**: Multi-path search strategy for CGROM.DAT/IPLROM.DAT

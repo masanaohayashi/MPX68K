@@ -23,7 +23,7 @@
 #include	<string.h>
 #include	<limits.h>
 
-#ifdef __APPLE__
+#if defined(__APPLE__) && !TARGET_OS_IPHONE
 #include	<unistd.h>
 #include	<fcntl.h>
 #include	<errno.h>
@@ -59,7 +59,7 @@ static DWORD s_last_iocs_sig_a1 = 0;
 static int s_scsi_log_total = 0;        // global log line counter
 #define SCSI_LOG_LIMIT 50000             // stop logging after this many lines
 
-#ifdef __APPLE__
+#if defined(__APPLE__) && !TARGET_OS_IPHONE
 #define SCSIU_VENDOR_ID  0x04d8
 #define SCSIU_PRODUCT_ID 0xE6B2
 #define SCSIU_MAX_PORTS  8
@@ -94,7 +94,7 @@ static SCSIU_BridgeState s_scsi_u_bridge = {
 // Forward declarations
 void SCSI_LogText(const char* text);
 
-#ifdef __APPLE__
+#if defined(__APPLE__) && !TARGET_OS_IPHONE
 static void SCSIU_SetStatusLocked(const char* fmt, ...);
 static int SCSIU_FindCandidatePorts(char paths[SCSIU_MAX_PORTS][SCSIU_PATH_LEN], int maxPorts);
 static int SCSIU_OpenPort(const char* path);
@@ -194,7 +194,7 @@ static void SCSI_NormalizeRootShortNames(DWORD bufAddr, DWORD startSec,
                                          DWORD count, DWORD secSize);
 static void SCSI_LogKernelQueueState(const char* tag);
 
-#ifdef __APPLE__
+#if defined(__APPLE__) && !TARGET_OS_IPHONE
 static void
 SCSIU_SetStatusLocked(const char* fmt, ...)
 {
@@ -389,7 +389,7 @@ SCSIU_InterruptThread(void* arg)
 int
 SCSIU_InitBridge(void)
 {
-#ifdef __APPLE__
+#if defined(__APPLE__) && !TARGET_OS_IPHONE
 	char paths[SCSIU_MAX_PORTS][SCSIU_PATH_LEN];
 	int portCount;
 	int i;
@@ -490,7 +490,7 @@ SCSIU_InitBridge(void)
 void
 SCSIU_StopBridge(void)
 {
-#ifdef __APPLE__
+#if defined(__APPLE__) && !TARGET_OS_IPHONE
 	int controlFd;
 	int interruptFd;
 	pthread_t thread;
@@ -528,7 +528,7 @@ SCSIU_StopBridge(void)
 int
 SCSIU_IsConnected(void)
 {
-#ifdef __APPLE__
+#if defined(__APPLE__) && !TARGET_OS_IPHONE
 	int connected;
 
 	pthread_mutex_lock(&s_scsi_u_bridge.mutex);
@@ -543,7 +543,7 @@ SCSIU_IsConnected(void)
 const char*
 SCSIU_GetStatus(void)
 {
-#ifdef __APPLE__
+#if defined(__APPLE__) && !TARGET_OS_IPHONE
 	return s_scsi_u_bridge.status;
 #else
 	return "Unavailable on this platform";
@@ -557,7 +557,7 @@ SCSIU_GetStatus(void)
 //    書込み: cmd|0x80 バイトを送信 → val バイトを送信
 //    DREG-EX (0x41): 0x41 を送信 → 2バイト length → length バイトのデータ
 // ---------------------------------------------------------------------------------------
-#ifdef __APPLE__
+#if defined(__APPLE__) && !TARGET_OS_IPHONE
 
 /* SPC レジスタ読出し。タイムアウト時は 0xFF を返す。 */
 static BYTE
@@ -1126,7 +1126,43 @@ SCSIU_ReadCapacity(DWORD* outLastLBA, DWORD* outBlockSize)
 	return 1;
 }
 
-#endif /* __APPLE__ */
+#endif /* __APPLE__ && !TARGET_OS_IPHONE */
+
+#if defined(__APPLE__) && TARGET_OS_IPHONE
+/* SCSI-U is a macOS serial/USB bridge.  Keep the shared IOCS code linkable on
+ * iOS, where IOKit USB and serial device access is unavailable. */
+static int SCSIU_EnsureBootCache(void) { return 0; }
+static int SCSIU_ReadBlocks(DWORD lba, DWORD count, DWORD blockSize, BYTE* buf)
+{
+	(void)lba;
+	(void)count;
+	(void)blockSize;
+	(void)buf;
+	return 0;
+}
+static int SCSIU_WriteBlocks(DWORD lba, DWORD count, DWORD blockSize, const BYTE* buf)
+{
+	(void)lba;
+	(void)count;
+	(void)blockSize;
+	(void)buf;
+	return 0;
+}
+static int SCSIU_ReadCapacity(DWORD* outLastLBA, DWORD* outBlockSize)
+{
+	if (outLastLBA != NULL) *outLastLBA = 0;
+	if (outBlockSize != NULL) *outBlockSize = 512;
+	return 0;
+}
+static void SCSIU_ResetBootCache(void) {}
+static void SCSIU_InvalidateBootCacheRange(DWORD lba, DWORD count, DWORD blockSize)
+{
+	(void)lba;
+	(void)count;
+	(void)blockSize;
+}
+static DWORD SCSIU_GetBlockSize(void) { return 512; }
+#endif
 
 /* ---------------------------------------------------------------------------------------
  * バスモードに応じたイメージバッファポインタ/サイズ取得ヘルパー。
@@ -1135,7 +1171,7 @@ SCSIU_ReadCapacity(DWORD* outLastLBA, DWORD* outBlockSize)
 static BYTE*
 SCSI_ImgBuf(void)
 {
-#ifdef __APPLE__
+#if defined(__APPLE__) && !TARGET_OS_IPHONE
 	if (X68000_GetStorageBusMode() == 2) {
 		return s_scsiu_boot_cache;
 	}
@@ -1146,7 +1182,7 @@ SCSI_ImgBuf(void)
 static long
 SCSI_ImgSize(void)
 {
-#ifdef __APPLE__
+#if defined(__APPLE__) && !TARGET_OS_IPHONE
 	if (X68000_GetStorageBusMode() == 2) {
 		return s_scsiu_boot_cache_size;
 	}

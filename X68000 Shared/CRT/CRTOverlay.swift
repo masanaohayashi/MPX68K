@@ -142,9 +142,11 @@ final class CRTOverlay: SKNode {
     }
 
     // MARK: - Interaction
+#if os(macOS)
     override func mouseDown(with event: NSEvent) { handle(point: event.location(in: self)) }
     override func mouseDragged(with event: NSEvent) { handle(point: event.location(in: self)) }
     override func mouseUp(with event: NSEvent) { /* no-op */ }
+#endif
 
     #if os(iOS)
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) { if let p = touches.first?.location(in: self) { handle(point: p) } }

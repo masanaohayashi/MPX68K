@@ -12,6 +12,25 @@ import CryptoKit
 
 /// ファイルセキュリティ管理クラス
 class X68Security {
+
+    /// Security-scoped bookmark flags exist on macOS, but Foundation marks
+    /// them unavailable on iOS. Keeping the platform choice here lets the
+    /// shared disk-state code use the same bookmark flow on both platforms.
+    static var bookmarkCreationOptions: URL.BookmarkCreationOptions {
+#if os(macOS)
+        return [.withSecurityScope]
+#else
+        return []
+#endif
+    }
+
+    static var bookmarkResolutionOptions: URL.BookmarkResolutionOptions {
+#if os(macOS)
+        return [.withSecurityScope]
+#else
+        return []
+#endif
+    }
     
     /// サポートされているファイル拡張子
     static let supportedExtensions = ["dim", "xdf", "2hd", "d88", "hdm", "hdf", "dat"]
@@ -234,13 +253,24 @@ class X68Security {
     /// - Returns: 操作の結果
     /// - Throws: アクセスエラーまたは操作エラー
     static func secureFileAccess<T>(_ url: URL, operation: () throws -> T) throws -> T {
+#if os(macOS)
         guard url.startAccessingSecurityScopedResource() else {
             throw X68MacError.fileAccessDenied(url.lastPathComponent)
         }
-        
         defer {
             url.stopAccessingSecurityScopedResource()
         }
+#else
+        // iOS app-container URLs are not security-scoped, while URLs returned
+        // by a document provider may be.  Try the scope when present, but do
+        // not reject ordinary files just because they have no scope.
+        let didStartSecurityScope = url.startAccessingSecurityScopedResource()
+        defer {
+            if didStartSecurityScope {
+                url.stopAccessingSecurityScopedResource()
+            }
+        }
+#endif
         
         return try operation()
     }

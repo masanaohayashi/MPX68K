@@ -311,7 +311,7 @@ class GameScene: SKScene {
         
         // Direct HDD loading to avoid complex FileSystem routing that may fail in TestFlight
         let extname = url.pathExtension.lowercased()
-        let bookmarkData = try? url.bookmarkData(options: .withSecurityScope, includingResourceValuesForKeys: nil, relativeTo: nil)
+        let bookmarkData = try? url.bookmarkData(options: X68Security.bookmarkCreationOptions, includingResourceValuesForKeys: nil, relativeTo: nil)
         
         // Check if this is a valid HDD file
         let allowedExtensions: Set<String> = ["hdf", "hdm", "hds"]

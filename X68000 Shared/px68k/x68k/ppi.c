@@ -7,6 +7,86 @@
 //
 //---------------------------------------------------------------------------
 
+#if defined(__APPLE__) && TARGET_OS_IPHONE
+
+#include "common.h"
+#include "ppi.h"
+
+/* JoyportU uses macOS IOKit/serial APIs.  iOS still needs the PPI symbols
+ * because the shared PIA implementation references them, so provide the
+ * ordinary 8255 latches without exposing a physical JoyportU device. */
+int joyport_ukun_mode = 0;
+static BYTE ppi_porta = 0xFF;
+static BYTE ppi_portb = 0xFF;
+static BYTE ppi_portc = 0x00;
+static BYTE ppi_control = 0x92;
+
+void PPI_Init(void)
+{
+    joyport_ukun_mode = 0;
+    ppi_porta = 0xFF;
+    ppi_portb = 0xFF;
+    ppi_portc = 0x00;
+    ppi_control = 0x92;
+}
+
+void PPI_Cleanup(void) {}
+
+void PPI_Reset(void)
+{
+    ppi_portc = 0x00;
+    ppi_control = 0x92;
+}
+
+BYTE FASTCALL PPI_Read(DWORD addr)
+{
+    if ((addr & 1) == 0) return 0xFF;
+    switch ((addr & 7) >> 1) {
+        case 0: return ppi_porta;
+        case 1: return ppi_portb;
+        case 2: return ppi_portc;
+        default: return ppi_control;
+    }
+}
+
+void FASTCALL PPI_Write(DWORD addr, BYTE data)
+{
+    int bit;
+    BYTE mask;
+
+    if ((addr & 1) == 0) return;
+    switch ((addr & 7) >> 1) {
+        case 0: ppi_porta = data; break;
+        case 1: ppi_portb = data; break;
+        case 2: ppi_portc = data; break;
+        case 3:
+            if (data < 0x80) {
+                bit = (data >> 1) & 7;
+                mask = (BYTE)(1 << bit);
+                if (data & 1) ppi_portc |= mask;
+                else ppi_portc &= (BYTE)~mask;
+            } else {
+                ppi_control = data;
+            }
+            break;
+    }
+}
+
+void PPI_SetJoyportUMode(int mode)
+{
+    joyport_ukun_mode = (mode >= 0 && mode <= 2) ? mode : 0;
+}
+
+int PPI_GetJoyportUMode(void) { return joyport_ukun_mode; }
+int PPI_JoyportU_InCommandMode(void) { return 0; }
+int PPI_JoyportU_CmdRead(int port)
+{
+    (void)port;
+    return -1;
+}
+
+#else
+
 #include "common.h"
 #include "ppi.h"
 #include "../x11/joystick.h"
@@ -795,3 +875,5 @@ int PPI_JoyportU_CmdRead(int port)
 	}
 	return b1;
 }
+
+#endif /* defined(__APPLE__) && TARGET_OS_IPHONE */

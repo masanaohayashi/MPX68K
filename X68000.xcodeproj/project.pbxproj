@@ -35,7 +35,6 @@
 		07F4C7242430667D002CF5CA /* sasi.c in Sources */ = {isa = PBXBuildFile; fileRef = 07F4C6ED2430667A002CF5CA /* sasi.c */; };
 		07F4C7262430667D002CF5CA /* midi.c in Sources */ = {isa = PBXBuildFile; fileRef = 07F4C6EE2430667A002CF5CA /* midi.c */; };
 		07F4C7282430667D002CF5CA /* crtc.c in Sources */ = {isa = PBXBuildFile; fileRef = 07F4C6F12430667A002CF5CA /* crtc.c */; };
-		AC10FEED2508190000000001 /* crtc_timing.c in Sources */ = {isa = PBXBuildFile; fileRef = AC10FEED2508190000000002 /* crtc_timing.c */; };
 		07F4C72A2430667D002CF5CA /* irqh.c in Sources */ = {isa = PBXBuildFile; fileRef = 07F4C6F32430667A002CF5CA /* irqh.c */; };
 		07F4C72C2430667D002CF5CA /* d68k.c in Sources */ = {isa = PBXBuildFile; fileRef = 07F4C6F52430667A002CF5CA /* d68k.c */; };
 		07F4C72E2430667D002CF5CA /* adpcm.c in Sources */ = {isa = PBXBuildFile; fileRef = 07F4C6F62430667A002CF5CA /* adpcm.c */; };
@@ -67,7 +66,6 @@
 		07F86410242F94BB00CBB224 /* fake.c in Sources */ = {isa = PBXBuildFile; fileRef = 07F86408242F94BB00CBB224 /* fake.c */; };
 		07F864B9242F97BE00CBB224 /* joystick.c in Sources */ = {isa = PBXBuildFile; fileRef = 07F86491242F97BC00CBB224 /* joystick.c */; };
 		07F864BD242F97BE00CBB224 /* windraw.c in Sources */ = {isa = PBXBuildFile; fileRef = 07F86494242F97BC00CBB224 /* windraw.c */; };
-		AC10FEED2508190000000004 /* scrbuf.c in Sources */ = {isa = PBXBuildFile; fileRef = AC10FEED2508190000000005 /* scrbuf.c */; };
 		07F864BF242F97BE00CBB224 /* winx68k.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 07F8649B242F97BC00CBB224 /* winx68k.cpp */; };
 		07F864C3242F97BE00CBB224 /* keyboard.c in Sources */ = {isa = PBXBuildFile; fileRef = 07F864A3242F97BD00CBB224 /* keyboard.c */; };
 		07F864C5242F97BE00CBB224 /* dswin.c in Sources */ = {isa = PBXBuildFile; fileRef = 07F864A5242F97BD00CBB224 /* dswin.c */; };
@@ -91,6 +89,16 @@
 		53C0A1062E50050000AAA001 /* SuperimposeManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53C0A1052E50050000AAA001 /* SuperimposeManager.swift */; };
 		AA000001300000000000AA01 /* MonitorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002300000000000AA01 /* MonitorView.swift */; };
 		AA000003300000000000AA01 /* MonitorWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000004300000000000AA01 /* MonitorWindowController.swift */; };
+		AC10FEED2508190000000001 /* crtc_timing.c in Sources */ = {isa = PBXBuildFile; fileRef = AC10FEED2508190000000002 /* crtc_timing.c */; };
+		AC10FEED2508190000000004 /* scrbuf.c in Sources */ = {isa = PBXBuildFile; fileRef = AC10FEED2508190000000005 /* scrbuf.c */; };
+		07F863AE242F93EA00CBB224 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07F863AD242F93EA00CBB224 /* AppDelegate.swift */; };
+		07F863B0242F93EA00CBB224 /* GameViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07F863AF242F93EA00CBB224 /* GameViewController.swift */; };
+		07F863B3242F93EA00CBB224 /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 07F863B1242F93EA00CBB224 /* Main.storyboard */; };
+		07F863B6242F93EA00CBB224 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 07F863B4242F93EA00CBB224 /* LaunchScreen.storyboard */; };
+		07F863C6242F93EA00CBB224 /* Actions.sks in Resources */ = {isa = PBXBuildFile; fileRef = 07F863A2242F93E800CBB224 /* Actions.sks */; };
+		07F863C8242F93EA00CBB224 /* GameScene.sks in Resources */ = {isa = PBXBuildFile; fileRef = 073F76E42431F438005B1F18 /* GameScene.sks */; };
+		07F863CA242F93EA00CBB224 /* GameScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07F863A4242F93E800CBB224 /* GameScene.swift */; };
+		07F863CC242F93EA00CBB224 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 07F863A5242F93EA00CBB224 /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -114,6 +122,13 @@
 			proxyType = 1;
 			remoteGlobalIDString = 07E2E65D24324103007EFB06;
 			remoteInfo = c68k_mac;
+		};
+		53685FBD2F2B8F1E00A86652 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 073F76FB24323762005B1F18 /* c68k.xcodeproj */;
+			proxyType = 1;
+			remoteGlobalIDString = 073F76F024323762005B1F18;
+			remoteInfo = c68k;
 		};
 /* End PBXContainerItemProxy section */
 
@@ -162,8 +177,6 @@
 		07F4C6EF2430667A002CF5CA /* scc.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = scc.h; sourceTree = "<group>"; };
 		07F4C6F02430667A002CF5CA /* crtc.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = crtc.h; sourceTree = "<group>"; };
 		07F4C6F12430667A002CF5CA /* crtc.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = crtc.c; sourceTree = "<group>"; };
-		AC10FEED2508190000000002 /* crtc_timing.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = crtc_timing.c; sourceTree = "<group>"; };
-		AC10FEED2508190000000003 /* crtc_timing.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = crtc_timing.h; sourceTree = "<group>"; };
 		07F4C6F22430667A002CF5CA /* gvram.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = gvram.h; sourceTree = "<group>"; };
 		07F4C6F32430667A002CF5CA /* irqh.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = irqh.c; sourceTree = "<group>"; };
 		07F4C6F42430667A002CF5CA /* palette.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = palette.h; sourceTree = "<group>"; };
@@ -226,8 +239,6 @@
 		07F86490242F97BC00CBB224 /* common.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = common.h; path = ../m68000/common.h; sourceTree = "<group>"; };
 		07F86491242F97BC00CBB224 /* joystick.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = joystick.c; sourceTree = "<group>"; };
 		07F86494242F97BC00CBB224 /* windraw.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = windraw.c; sourceTree = "<group>"; };
-		AC10FEED2508190000000005 /* scrbuf.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = scrbuf.c; sourceTree = "<group>"; };
-		AC10FEED2508190000000006 /* scrbuf.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = scrbuf.h; sourceTree = "<group>"; };
 		07F86495242F97BC00CBB224 /* cdrom.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = cdrom.h; sourceTree = "<group>"; };
 		07F86496242F97BC00CBB224 /* winx68k.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = winx68k.h; sourceTree = "<group>"; };
 		07F86497242F97BC00CBB224 /* status.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = status.h; sourceTree = "<group>"; };
@@ -271,6 +282,19 @@
 		53C0A1052E50050000AAA001 /* SuperimposeManager.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = SuperimposeManager.swift; sourceTree = "<group>"; };
 		AA000002300000000000AA01 /* MonitorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MonitorView.swift; sourceTree = "<group>"; };
 		AA000004300000000000AA01 /* MonitorWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MonitorWindowController.swift; sourceTree = "<group>"; };
+		AC10FEED2508190000000002 /* crtc_timing.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = crtc_timing.c; sourceTree = "<group>"; };
+		AC10FEED2508190000000003 /* crtc_timing.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = crtc_timing.h; sourceTree = "<group>"; };
+		AC10FEED2508190000000005 /* scrbuf.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = scrbuf.c; sourceTree = "<group>"; };
+		AC10FEED2508190000000006 /* scrbuf.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = scrbuf.h; sourceTree = "<group>"; };
+		073F76E7243213C1005B1F18 /* X68000 for iOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "X68000 for iOS.entitlements"; sourceTree = "<group>"; };
+		3DD3E149263EC1E8001A75F0 /* X68000 for iOSDebug.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "X68000 for iOSDebug.entitlements"; sourceTree = "<group>"; };
+		07F863AD242F93EA00CBB224 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		07F863AF242F93EA00CBB224 /* GameViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameViewController.swift; sourceTree = "<group>"; };
+		07F863B2242F93EA00CBB224 /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/Main.storyboard; sourceTree = "<group>"; };
+		07F863B5242F93EA00CBB224 /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
+		07F863B7242F93EA00CBB224 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		07F863AA242F93EA00CBB224 /* X68000 for iOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "X68000 for iOS.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		07F863D8242F944100CBB224 /* X68000 iOS-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "X68000 iOS-Bridging-Header.h"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -312,6 +336,7 @@
 			children = (
 				073F76FB24323762005B1F18 /* c68k.xcodeproj */,
 				07F863A1242F93E800CBB224 /* X68000 Shared */,
+				07F863AC242F93EA00CBB224 /* X68000 iOS */,
 				07F863BD242F93EA00CBB224 /* X68000 macOS */,
 				07F863AB242F93EA00CBB224 /* Products */,
 				0764421C24333257006E5208 /* Frameworks */,
@@ -351,6 +376,7 @@
 		07F863AB242F93EA00CBB224 /* Products */ = {
 			isa = PBXGroup;
 			children = (
+				07F863AA242F93EA00CBB224 /* X68000 for iOS.app */,
 				07F863BC242F93EA00CBB224 /* X68000.app */,
 			);
 			name = Products;
@@ -369,6 +395,20 @@
 				07F863C5242F93EA00CBB224 /* Info.plist */,
 			);
 			path = "X68000 macOS";
+			sourceTree = "<group>";
+		};
+		07F863AC242F93EA00CBB224 /* X68000 iOS */ = {
+			isa = PBXGroup;
+			children = (
+				3DD3E149263EC1E8001A75F0 /* X68000 for iOSDebug.entitlements */,
+				073F76E7243213C1005B1F18 /* X68000 for iOS.entitlements */,
+				07F863AD242F93EA00CBB224 /* AppDelegate.swift */,
+				07F863AF242F93EA00CBB224 /* GameViewController.swift */,
+				07F863B1242F93EA00CBB224 /* Main.storyboard */,
+				07F863B4242F93EA00CBB224 /* LaunchScreen.storyboard */,
+				07F863B7242F93EA00CBB224 /* Info.plist */,
+			);
+			path = "X68000 iOS";
 			sourceTree = "<group>";
 		};
 		07F863D6242F940200CBB224 /* px68k */ = {
@@ -405,6 +445,7 @@
 				07F4C6D22430664A002CF5CA /* misc.h */,
 				07F4C6CB2430664A002CF5CA /* opm.cpp */,
 				07F4C6D52430664B002CF5CA /* opm.h */,
+				07F863D8242F944100CBB224 /* X68000 iOS-Bridging-Header.h */,
 				535D07B52E685E4600CF5265 /* X68000 macOS-Bridging-Header.h */,
 			);
 			path = fmgen;
@@ -551,6 +592,24 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		07F863A9242F93EA00CBB224 /* X68000 iOS */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 07F863D0242F93EA00CBB224 /* Build configuration list for PBXNativeTarget "X68000 iOS" */;
+			buildPhases = (
+				07F863A6242F93EA00CBB224 /* Sources */,
+				07F863A7242F93EA00CBB224 /* Frameworks */,
+				07F863A8242F93EA00CBB224 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				53685FBE2F2B8F1E00A86652 /* PBXTargetDependency */,
+			);
+			name = "X68000 iOS";
+			productName = "X68000 iOS";
+			productReference = 07F863AA242F93EA00CBB224 /* X68000 for iOS.app */;
+			productType = "com.apple.product-type.application";
+		};
 		07F863BB242F93EA00CBB224 /* X68000 macOS */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 07F863D3242F93EA00CBB224 /* Build configuration list for PBXNativeTarget "X68000 macOS" */;
@@ -584,6 +643,10 @@
 				LastUpgradeCheck = 2700;
 				ORGANIZATIONNAME = NANKIN;
 				TargetAttributes = {
+					07F863A9242F93EA00CBB224 = {
+						CreatedOnToolsVersion = 11.4;
+						LastSwiftMigration = 1140;
+					};
 					07F863BB242F93EA00CBB224 = {
 						CreatedOnToolsVersion = 11.4;
 						LastSwiftMigration = 1140;
@@ -612,6 +675,7 @@
 			);
 			projectRoot = "";
 			targets = (
+				07F863A9242F93EA00CBB224 /* X68000 iOS */,
 				07F863BB242F93EA00CBB224 /* X68000 macOS */,
 			);
 		};
@@ -635,6 +699,24 @@
 /* End PBXReferenceProxy section */
 
 /* Begin PBXResourcesBuildPhase section */
+		07F863A8242F93EA00CBB224 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+				0760DC282434F493004CA0CF /* FDD.png in Resources */,
+				07F864D5242F97BE00CBB224 /* menu_str_sjis.txt in Resources */,
+				0786964C243DBDF7007FCCEA /* jSubstrate.png in Resources */,
+				0758DC59243EFCE60097E86C /* ConfigScene.sks in Resources */,
+				07869646243DBDF7007FCCEA /* jStick@2x.png in Resources */,
+				07869648243DBDF7007FCCEA /* jStick.png in Resources */,
+				07F863B3242F93EA00CBB224 /* Main.storyboard in Resources */,
+				0758DD5D24401BA20097E86C /* HDDIcon.png in Resources */,
+				07F863CC242F93EA00CBB224 /* Assets.xcassets in Resources */,
+				073F76E62431F438005B1F18 /* GameScene.sks in Resources */,
+				0786964A243DBDF7007FCCEA /* jSubstrate@2x.png in Resources */,
+				07F863C6242F93EA00CBB224 /* Actions.sks in Resources */,
+				07F863B6242F93EA00CBB224 /* LaunchScreen.storyboard in Resources */,
+			);
+		};
 		07F863BA242F93EA00CBB224 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			files = (
@@ -655,6 +737,79 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		07F863A6242F93EA00CBB224 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+				07F4C7542430667D002CF5CA /* ioc.c in Sources */,
+				07F86410242F94BB00CBB224 /* fake.c in Sources */,
+				07F4C6C8243065F9002CF5CA /* m68000.c in Sources */,
+				07F864B9242F97BE00CBB224 /* joystick.c in Sources */,
+				07A528BD24389F5300AFD00D /* X68MouseController.swift in Sources */,
+				07F863CA242F93EA00CBB224 /* GameScene.swift in Sources */,
+				07F4C72A2430667D002CF5CA /* irqh.c in Sources */,
+				07E6EF332430CCAE0034E485 /* CGROM_DAT.c in Sources */,
+				07F4C7522430667D002CF5CA /* rtc.c in Sources */,
+				53A8611A2E4375CA0056E4DE /* X68Logger.swift in Sources */,
+				53A8611B2E4375CA0056E4DE /* X68ErrorHandling.swift in Sources */,
+				53A8611C2E4375CA0056E4DE /* X68Security.swift in Sources */,
+				07F4C7482430667D002CF5CA /* sram.c in Sources */,
+				07869627243D9A91007FCCEA /* X68JoyCard.swift in Sources */,
+				07F864CF242F97BE00CBB224 /* prop.c in Sources */,
+				07F4C7322430667D002CF5CA /* scsi.c in Sources */,
+				07F4C73E2430667D002CF5CA /* pia.c in Sources */,
+				07F4C7502430667D002CF5CA /* gvram.c in Sources */,
+				07F4C7282430667D002CF5CA /* crtc.c in Sources */,
+				AC10FEED2508190000000001 /* crtc_timing.c in Sources */,
+				07869626243D9A8E007FCCEA /* X68Device.swift in Sources */,
+				07F4C7242430667D002CF5CA /* sasi.c in Sources */,
+				0758DC5F243EFD830097E86C /* ConfigScene.swift in Sources */,
+				07F4C7222430667D002CF5CA /* fdc.c in Sources */,
+				07F4C6DD2430664B002CF5CA /* fmg_wrap.cpp in Sources */,
+				07F864CD242F97BE00CBB224 /* mouse.c in Sources */,
+				07F4C73C2430667D002CF5CA /* dmac.c in Sources */,
+				07F4C7342430667D002CF5CA /* disk_d88.c in Sources */,
+				07F4C6E12430664B002CF5CA /* opm.cpp in Sources */,
+				0764421B243328C3006E5208 /* FileSystem.swift in Sources */,
+				07F4C7262430667D002CF5CA /* midi.c in Sources */,
+				07F4C7422430667D002CF5CA /* mfp.c in Sources */,
+				07F863AE242F93EA00CBB224 /* AppDelegate.swift in Sources */,
+				07F863B0242F93EA00CBB224 /* GameViewController.swift in Sources */,
+				07F4C7592430A73C002CF5CA /* AudioStream.swift in Sources */,
+				07F4C7462430667D002CF5CA /* bg.c in Sources */,
+				07F4C7442430667D002CF5CA /* sysport.c in Sources */,
+				07F4C6E72430664B002CF5CA /* fmgen.cpp in Sources */,
+				07F4C72C2430667D002CF5CA /* d68k.c in Sources */,
+				07F864DB242F97BE00CBB224 /* timer.c in Sources */,
+				07F864C5242F97BE00CBB224 /* dswin.c in Sources */,
+				07F4C7362430667D002CF5CA /* mem_wrap.c in Sources */,
+				07F864D9242F97BE00CBB224 /* status.c in Sources */,
+				07F4C74C2430667D002CF5CA /* disk_dim.c in Sources */,
+				0786963E243DBB73007FCCEA /* TAAnalogJoyStick.swift in Sources */,
+				07F4C7402430667D002CF5CA /* fdd.c in Sources */,
+				535D07B02E685E0300CF5265 /* ppi.c in Sources */,
+				07B71D7D243A350500953E25 /* MIDIController.swift in Sources */,
+				07F8640E242F94BB00CBB224 /* peace.c in Sources */,
+				07F4C74A2430667D002CF5CA /* scc.c in Sources */,
+				0760DC2B24350DDC004CA0CF /* BenchMark.swift in Sources */,
+				07F8640C242F94BB00CBB224 /* dosio.c in Sources */,
+				07F4C73A2430667D002CF5CA /* tvram.c in Sources */,
+				0771C5A22431B129002D40F0 /* JoyController.swift in Sources */,
+				07F4C6DF2430664B002CF5CA /* fmtimer.cpp in Sources */,
+				07F4C7562430667D002CF5CA /* disk_xdf.c in Sources */,
+				07F864BD242F97BE00CBB224 /* windraw.c in Sources */,
+				AC10FEED2508190000000004 /* scrbuf.c in Sources */,
+				07F864D3242F97BE00CBB224 /* common.c in Sources */,
+				07F4C72E2430667D002CF5CA /* adpcm.c in Sources */,
+				07F4C7382430667D002CF5CA /* palette.c in Sources */,
+				07F864C3242F97BE00CBB224 /* keyboard.c in Sources */,
+				07F864BF242F97BE00CBB224 /* winx68k.cpp in Sources */,
+				07E6EF302430CC1B0034E485 /* IPLROM_DAT.c in Sources */,
+				53C0A1002E50000000AAA001 /* CRT/CRTSettings.swift in Sources */,
+				53C0A1022E50000000AAA001 /* CRT/CRTFilterManager.swift in Sources */,
+				53C0A1062E50050000AAA001 /* SuperimposeManager.swift in Sources */,
+				53C0A1042E50010000AAA001 /* CRT/CRTOverlay.swift in Sources */,
+			);
+		};
 		07F863B8242F93EA00CBB224 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			files = (
@@ -733,6 +888,11 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		53685FBE2F2B8F1E00A86652 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = c68k;
+			targetProxy = 53685FBD2F2B8F1E00A86652 /* PBXContainerItemProxy */;
+		};
 		53685FBC2F2B8F1E00A86652 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			name = c68k_mac;
@@ -741,6 +901,22 @@
 /* End PBXTargetDependency section */
 
 /* Begin PBXVariantGroup section */
+		07F863B1242F93EA00CBB224 /* Main.storyboard */ = {
+			isa = PBXVariantGroup;
+			children = (
+				07F863B2242F93EA00CBB224 /* Base */,
+			);
+			name = Main.storyboard;
+			sourceTree = "<group>";
+		};
+		07F863B4242F93EA00CBB224 /* LaunchScreen.storyboard */ = {
+			isa = PBXVariantGroup;
+			children = (
+				07F863B5242F93EA00CBB224 /* Base */,
+			);
+			name = LaunchScreen.storyboard;
+			sourceTree = "<group>";
+		};
 		07F863C2242F93EA00CBB224 /* Main.storyboard */ = {
 			isa = PBXVariantGroup;
 			children = (
@@ -876,6 +1052,98 @@
 			};
 			name = Release;
 		};
+		07F863D1242F93EA00CBB224 /* Debug configuration for PBXNativeTarget "X68000 iOS" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_ENTITLEMENTS = "X68000 iOS/X68000 for iOSDebug.entitlements";
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 936;
+				DEVELOPMENT_TEAM = P5G28RMWUN;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+					HAVE_C68K,
+					C68K_NO_JUMP_TABLE,
+					TARGET_IOS,
+				);
+				GCC_WARN_UNUSED_VALUE = NO;
+				GCC_WARN_UNUSED_VARIABLE = NO;
+				HEADER_SEARCH_PATHS = "";
+				INFOPLIST_FILE = "X68000 iOS/Info.plist";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.games";
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				LIBRARY_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(BUILT_PRODUCTS_DIR)",
+				);
+				MARKETING_VERSION = 4.3;
+				OTHER_LDFLAGS = "-lc68k";
+				PRODUCT_BUNDLE_IDENTIFIER = NANKIN.X68000;
+				PRODUCT_MODULE_NAME = X68000;
+				PRODUCT_NAME = "X68000 for iOS";
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_OBJC_BRIDGING_HEADER = "X68000 Shared/px68k/fmgen/X68000 iOS-Bridging-Header.h";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VERSIONING_SYSTEM = "apple-generic";
+			};
+			name = Debug;
+		};
+		07F863D2242F93EA00CBB224 /* Release configuration for PBXNativeTarget "X68000 iOS" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_ENTITLEMENTS = "X68000 iOS/X68000 for iOS.entitlements";
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 936;
+				DEVELOPMENT_TEAM = P5G28RMWUN;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					HAVE_C68K,
+					C68K_NO_JUMP_TABLE,
+					TARGET_IOS,
+				);
+				GCC_WARN_UNUSED_VALUE = NO;
+				GCC_WARN_UNUSED_VARIABLE = NO;
+				HEADER_SEARCH_PATHS = "";
+				INFOPLIST_FILE = "X68000 iOS/Info.plist";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.games";
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				LIBRARY_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(BUILT_PRODUCTS_DIR)",
+				);
+				MARKETING_VERSION = 4.3;
+				OTHER_LDFLAGS = "-lc68k";
+				PRODUCT_BUNDLE_IDENTIFIER = NANKIN.X68000;
+				PRODUCT_MODULE_NAME = X68000;
+				PRODUCT_NAME = "X68000 for iOS";
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_OBJC_BRIDGING_HEADER = "X68000 Shared/px68k/fmgen/X68000 iOS-Bridging-Header.h";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+				VERSIONING_SYSTEM = "apple-generic";
+			};
+			name = Release;
+		};
 		07F863D4242F93EA00CBB224 /* Debug configuration for PBXNativeTarget "X68000 macOS" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -993,6 +1261,14 @@
 			buildConfigurations = (
 				07F863CE242F93EA00CBB224 /* Debug configuration for PBXProject "X68000" */,
 				07F863CF242F93EA00CBB224 /* Release configuration for PBXProject "X68000" */,
+			);
+			defaultConfigurationName = Debug;
+		};
+		07F863D0242F93EA00CBB224 /* Build configuration list for PBXNativeTarget "X68000 iOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				07F863D1242F93EA00CBB224 /* Debug configuration for PBXNativeTarget "X68000 iOS" */,
+				07F863D2242F93EA00CBB224 /* Release configuration for PBXNativeTarget "X68000 iOS" */,
 			);
 			defaultConfigurationName = Debug;
 		};
