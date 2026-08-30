@@ -275,6 +275,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSMenu
                     self.autoSaveDiskStateIfNeeded()
                     infoLog("SCSI(ID0) image mounted asynchronously: \(url.lastPathComponent)", category: .fileSystem)
                     self.appendSCSILog("MAC_SCSI_MOUNT calling X68000_Reset")
+                    MIDIController.sendGlobalMIDIPanic()
                     X68000_Reset()
                 } else {
                     warningLog("SCSI(ID0) async mount failed for \(url.path)", category: .fileSystem)
@@ -505,6 +506,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSMenu
                         infoLog("Restored SCSI(ID0) image: \(URL(fileURLWithPath: path).lastPathComponent)", category: .fileSystem)
                         // Startup restore happens after the first core reset.
                         // Reset once more so the IPL boots from the restored SCSI disk.
+                        MIDIController.sendGlobalMIDIPanic()
                         X68000_Reset()
                         storageRestoreRetryCount = 0
                     } else {
@@ -934,6 +936,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSMenu
         let resetItem = NSMenuItem(title: "Reset System", action: #selector(resetSystem(_:)), keyEquivalent: "")
         resetItem.target = self
         systemMenu.addItem(resetItem)
+
+        let midiPanicItem = NSMenuItem(title: "MIDI Panic", action: #selector(midiPanic(_:)), keyEquivalent: "")
+        midiPanicItem.target = self
+        midiPanicItem.identifier = NSUserInterfaceItemIdentifier("System-midi-panic")
+        systemMenu.addItem(midiPanicItem)
 
         let mouseToggleItem = NSMenuItem(title: "Use MPX68K Mouse", action: #selector(toggleMouseMode(_:)), keyEquivalent: "m")
         mouseToggleItem.keyEquivalentModifierMask = [.command, .shift]
@@ -2609,6 +2616,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSMenu
     @IBAction func resetSystem(_ sender: Any) {
         debugLog("AppDelegate.resetSystem called", category: .ui)
         gameViewController?.resetSystem(sender)
+    }
+
+    @IBAction func midiPanic(_ sender: Any) {
+        debugLog("AppDelegate.midiPanic called", category: .ui)
+        MIDIController.sendGlobalMIDIPanic()
     }
 
     @IBAction func setMIDIDelay(_ sender: Any) {

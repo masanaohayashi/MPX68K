@@ -592,6 +592,7 @@ class GameScene: SKScene {
         infoLog("GameScene.resetSystem() called - performing manual reset", category: .emulation)
         // Persist SRAM before reset so SWITCH changes survive disk swaps/resets.
         fileSystem?.saveSRAM()
+        midiController.sendMIDIPanic()
         X68000_Reset()
         infoLog("System reset completed", category: .emulation)
     }
@@ -1033,6 +1034,7 @@ class GameScene: SKScene {
         #endif
         if scsiMounted || sasiMounted || scsiUMounted {
             infoLog("GameScene: HDD ready after restore (scsi=\(scsiMounted) sasi=\(sasiMounted) scsiU=\(scsiUMounted)), issuing post-restore reset", category: .fileSystem)
+            midiController.sendMIDIPanic()
             X68000_Reset()
         }
         if let warmupRaw = ProcessInfo.processInfo.environment["X68_BOOT_WARMUP_STEPS"],

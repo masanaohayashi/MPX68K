@@ -358,6 +358,7 @@ private func withMIDIPacketList(_ events: [MidiEvent],
 }
 
 final class MIDIController {
+    private static weak var activeController: MIDIController?
     private static let maxSysExBytes = 64 * 1024
     #if os(macOS)
     // MIDI events are drained at the end of an emulation frame. Keep a small
@@ -413,10 +414,14 @@ final class MIDIController {
     private var sysExHostTime: UInt64 = 0
 
     init() {
+        Self.activeController = self
         connect()
     }
 
     deinit {
+        if Self.activeController === self {
+            Self.activeController = nil
+        }
         #if os(macOS)
         serialMIDIOutput.close()
         #endif
@@ -436,6 +441,60 @@ final class MIDIController {
             MIDIClientDispose(clientRef)
             clientRef = 0
         }
+    }
+
+    /// Sends a panic sequence through the currently active MIDI controller.
+    /// This is used by reset paths that do not own the GameScene instance.
+    static func sendGlobalMIDIPanic() {
+        activeController?.sendMIDIPanic()
+    }
+
+    /// Stops sounding notes on every connected MIDI destination and hosted AU.
+    /// Some devices ignore controller-based panic messages, so explicit Note
+    /// Off messages for every key and channel are included as well.
+    func sendMIDIPanic() {
+        #if os(macOS)
+        // Do not allow delayed events queued before the panic to arrive after
+        // the reset and retrigger a voice on the serial output.
+        pendingEvents.removeAll(keepingCapacity: true)
+        pendingIndex = 0
+        let hostTime = AudioGetCurrentHostTime()
+        #else
+        let hostTime: UInt64 = 0
+        #endif
+
+        for channel in 0..<16 {
+            let status = 0xB0 | UInt8(channel)
+            sendPanicEvent([status, 120, 0], hostTime: hostTime) // All Sound Off
+            sendPanicEvent([status, 123, 0], hostTime: hostTime) // All Notes Off
+
+            for note in 0...127 {
+                sendPanicEvent(
+                    [0x80 | UInt8(channel), UInt8(note), 0],
+                    hostTime: hostTime
+                )
+            }
+        }
+
+        // GM System On is the MIDI 1.0 General MIDI reset message.
+        sendPanicEvent(
+            [0xF0, 0x7E, 0x7F, 0x09, 0x01, 0xF7],
+            hostTime: hostTime
+        )
+    }
+
+    private func sendPanicEvent(_ event: [UInt8], hostTime: UInt64) {
+        #if os(macOS)
+        // Bypass the normal musical-event look-ahead and user output delay:
+        // panic must reach every destination as one ordered sequence.
+        audioUnitSender?(event, hostTime)
+        sendCoreMIDIChunks(event, hostTime: hostTime)
+        if outputSettings.rs232cEnabled {
+            serialMIDIOutput.send(event)
+        }
+        #else
+        sendCoreMIDIChunks(event, hostTime: hostTime)
+        #endif
     }
 
     private func connect() {

@@ -204,6 +204,7 @@ struct MonitorView: View {
 
         case "RESET":
             if let error = requireWriteAccess() { return error }
+            MIDIController.sendGlobalMIDIPanic()
             X68000_Reset()
             writeUnlocked = false
             return "Reset.\n"

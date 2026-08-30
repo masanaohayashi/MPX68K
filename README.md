@@ -198,6 +198,7 @@ built automatically by each Xcode application target; ymfm is pinned as the
 
 #### System Menu
 - **Reset System**: Hard-reset the emulator
+- **MIDI Panic**: Send All Sound Off, All Notes Off, explicit Note Off for every key on every channel, and GM System On to the Audio Unit and physical MIDI outputs
 - **Use X68000 Mouse** (⇧⌘M): Toggle X68000 mouse capture
 - **Toggle Input Mode**: Switch between input modes
 - **MIDI Output Delay…**: Configure MIDI output delay

@@ -705,6 +705,7 @@ class FileSystem {
 
         if restored && (scsiMounted || sasiMounted || scsiUMounted) && !(userMountedFDD0 || userMountedFDD1) {
             infoLog("FileSystem: HDD ready after async restore (scsi=\(scsiMounted) sasi=\(sasiMounted) scsiU=\(scsiUMounted)), issuing post-restore reset", category: .fileSystem)
+            MIDIController.sendGlobalMIDIPanic()
             X68000_Reset()
         } else if restored {
             infoLog("FileSystem: skipping post-restore reset (user already mounted media)", category: .fileSystem)
