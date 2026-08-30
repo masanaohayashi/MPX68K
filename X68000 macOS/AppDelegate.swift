@@ -937,11 +937,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSMenu
         resetItem.target = self
         systemMenu.addItem(resetItem)
 
-        let midiPanicItem = NSMenuItem(title: "MIDI Panic", action: #selector(midiPanic(_:)), keyEquivalent: "")
-        midiPanicItem.target = self
-        midiPanicItem.identifier = NSUserInterfaceItemIdentifier("System-midi-panic")
-        systemMenu.addItem(midiPanicItem)
-
         let mouseToggleItem = NSMenuItem(title: "Use MPX68K Mouse", action: #selector(toggleMouseMode(_:)), keyEquivalent: "m")
         mouseToggleItem.keyEquivalentModifierMask = [.command, .shift]
         mouseToggleItem.target = self
@@ -955,6 +950,16 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSMenu
         let midiDelayItem = NSMenuItem(title: "MIDI Output Delay...", action: #selector(setMIDIDelay(_:)), keyEquivalent: "")
         midiDelayItem.target = self
         systemMenu.addItem(midiDelayItem)
+
+        let midiPanicItem = NSMenuItem(title: "MIDI Panic", action: #selector(midiPanic(_:)), keyEquivalent: "")
+        midiPanicItem.target = self
+        midiPanicItem.identifier = NSUserInterfaceItemIdentifier("System-midi-panic")
+        systemMenu.addItem(midiPanicItem)
+
+        let gmResetItem = NSMenuItem(title: "GM Reset", action: #selector(gmReset(_:)), keyEquivalent: "")
+        gmResetItem.target = self
+        gmResetItem.identifier = NSUserInterfaceItemIdentifier("System-gm-reset")
+        systemMenu.addItem(gmResetItem)
 
         let deleteIplItem = NSMenuItem(title: "Delete IPLROM.DAT...", action: #selector(deleteIPLROM(_:)), keyEquivalent: "")
         deleteIplItem.target = self
@@ -2621,6 +2626,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSMenu
     @IBAction func midiPanic(_ sender: Any) {
         debugLog("AppDelegate.midiPanic called", category: .ui)
         MIDIController.sendGlobalMIDIPanic()
+    }
+
+    @IBAction func gmReset(_ sender: Any) {
+        debugLog("AppDelegate.gmReset called", category: .ui)
+        MIDIController.sendGlobalGMReset()
     }
 
     @IBAction func setMIDIDelay(_ sender: Any) {

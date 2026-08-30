@@ -449,6 +449,11 @@ final class MIDIController {
         activeController?.sendMIDIPanic()
     }
 
+    /// Sends a GM System On reset through the currently active MIDI controller.
+    static func sendGlobalGMReset() {
+        activeController?.sendGMReset()
+    }
+
     /// Stops sounding notes on every connected MIDI destination and hosted AU.
     /// Some devices ignore controller-based panic messages, so explicit Note
     /// Off messages for every key and channel are included as well.
@@ -465,28 +470,40 @@ final class MIDIController {
 
         for channel in 0..<16 {
             let status = 0xB0 | UInt8(channel)
-            sendPanicEvent([status, 120, 0], hostTime: hostTime) // All Sound Off
-            sendPanicEvent([status, 123, 0], hostTime: hostTime) // All Notes Off
+            sendImmediateEvent([status, 120, 0], hostTime: hostTime) // All Sound Off
+            sendImmediateEvent([status, 123, 0], hostTime: hostTime) // All Notes Off
 
             for note in 0...127 {
-                sendPanicEvent(
+                sendImmediateEvent(
                     [0x80 | UInt8(channel), UInt8(note), 0],
                     hostTime: hostTime
                 )
             }
         }
+    }
+
+    /// Resets connected General MIDI devices without changing the emulator's
+    /// reset behavior. This is intentionally separate from MIDI panic.
+    func sendGMReset() {
+        #if os(macOS)
+        pendingEvents.removeAll(keepingCapacity: true)
+        pendingIndex = 0
+        let hostTime = AudioGetCurrentHostTime()
+        #else
+        let hostTime: UInt64 = 0
+        #endif
 
         // GM System On is the MIDI 1.0 General MIDI reset message.
-        sendPanicEvent(
+        sendImmediateEvent(
             [0xF0, 0x7E, 0x7F, 0x09, 0x01, 0xF7],
             hostTime: hostTime
         )
     }
 
-    private func sendPanicEvent(_ event: [UInt8], hostTime: UInt64) {
+    private func sendImmediateEvent(_ event: [UInt8], hostTime: UInt64) {
         #if os(macOS)
         // Bypass the normal musical-event look-ahead and user output delay:
-        // panic must reach every destination as one ordered sequence.
+        // reset commands must reach every destination as one ordered sequence.
         audioUnitSender?(event, hostTime)
         sendCoreMIDIChunks(event, hostTime: hostTime)
         if outputSettings.rs232cEnabled {

@@ -198,10 +198,11 @@ built automatically by each Xcode application target; ymfm is pinned as the
 
 #### System Menu
 - **Reset System**: Hard-reset the emulator
-- **MIDI Panic**: Send All Sound Off, All Notes Off, explicit Note Off for every key on every channel, and GM System On to the Audio Unit and physical MIDI outputs
 - **Use X68000 Mouse** (⇧⌘M): Toggle X68000 mouse capture
 - **Toggle Input Mode**: Switch between input modes
 - **MIDI Output Delay…**: Configure MIDI output delay
+- **MIDI Panic**: Send All Sound Off, All Notes Off, and explicit Note Off for every key on every channel to the Audio Unit and physical MIDI outputs
+- **GM Reset**: Send the GM System On reset message to the Audio Unit and physical MIDI outputs
 - **Delete IPLROM.DAT…**: Remove a cached IPL ROM
 - **Serial Communication → Mouse Only / PTY / TCP Connection… / TCP Server… / Disconnect**: Select serial backend
 - **Serial Communication → Original Mouse SCC (Compat)**: Enable SCC compatibility mode for VS.X double-click
