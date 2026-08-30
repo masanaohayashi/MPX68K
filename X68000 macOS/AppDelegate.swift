@@ -2143,6 +2143,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSMenu
         // Save SRAM data before terminating
         // debugLog("AppDelegate.applicationWillTerminate - saving SRAM", category: .x68mac)
         gameViewController?.saveSRAM()
+        gameViewController?.saveAudioUnitState()
         
         // Stop the menu update timer
         menuUpdateTimer?.invalidate()

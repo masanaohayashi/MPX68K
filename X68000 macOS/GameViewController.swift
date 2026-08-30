@@ -1293,6 +1293,7 @@ class GameViewController: NSViewController {
         // Final save attempt
         gameScene?.saveHDD()
         gameScene?.fileSystem?.saveSRAM()
+        saveAudioUnitState()
     }
 
 }
@@ -1306,6 +1307,7 @@ extension GameViewController: NSWindowDelegate {
         // Save HDD and SRAM before window closes
         gameScene?.saveHDD()
         gameScene?.fileSystem?.saveSRAM()
+        saveAudioUnitState()
         
         return true
     }
@@ -1394,6 +1396,10 @@ extension GameViewController: NSDraggingDestination {
         
         // Also save HDD changes
         gameScene?.saveHDD()
+    }
+
+    func saveAudioUnitState() {
+        gameScene?.saveAudioUnitState()
     }
     
     override func viewWillDisappear() {

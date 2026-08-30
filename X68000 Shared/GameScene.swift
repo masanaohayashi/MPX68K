@@ -1993,6 +1993,10 @@ class GameScene: SKScene {
         stream.showAudioUnitEditor(completion: completion)
     }
 
+    func saveAudioUnitState() {
+        audioStream?.saveAudioUnitState()
+    }
+
     #endif
     
     

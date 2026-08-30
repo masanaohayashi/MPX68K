@@ -656,6 +656,10 @@ class AudioStream {
         audioUnitHost.showEditor(completion: completion)
     }
 
+    func saveAudioUnitState() {
+        audioUnitHost.saveState()
+    }
+
     #endif
 }
 
@@ -980,6 +984,7 @@ private let mpx68kDirectAudioRenderCallback: AURenderCallback = {
 }
 
 private final class MPX68KAudioUnitHost {
+    private static let audioUnitStateDefaultsPrefix = "MPX68K.AudioUnitState."
     private static let audioUnitLoadQueue = DispatchQueue(
         label: "MPX68K.AudioUnitHost.load",
         qos: .userInitiated
@@ -1144,6 +1149,7 @@ private final class MPX68KAudioUnitHost {
 
     func close() {
         guard !isClosed else { return }
+        saveState()
         isClosed = true
         shouldRun = false
         loadGeneration &+= 1
@@ -1157,6 +1163,37 @@ private final class MPX68KAudioUnitHost {
         midiScheduler = nil
         legacyAudioUnit = nil
         currentDescriptor = nil
+    }
+
+    func saveState() {
+        guard !isClosed,
+              let audioUnit,
+              let descriptor = currentDescriptor else {
+            return
+        }
+
+        guard let state = audioUnit.auAudioUnit.fullState else {
+            warningLog(
+                "Audio Unit \(descriptor.name) does not provide a persistable state",
+                category: .audio
+            )
+            return
+        }
+
+        do {
+            let data = try PropertyListSerialization.data(
+                fromPropertyList: state,
+                format: .binary,
+                options: 0
+            )
+            UserDefaults.standard.set(data, forKey: Self.stateDefaultsKey(for: descriptor))
+            debugLog("Saved Audio Unit state: \(descriptor.name)", category: .audio)
+        } catch {
+            warningLog(
+                "Cannot serialize Audio Unit state for \(descriptor.name): \(error.localizedDescription)",
+                category: .audio
+            )
+        }
     }
 
     func sendMIDI(_ event: [UInt8], hostTime: UInt64) {
@@ -1286,6 +1323,10 @@ private final class MPX68KAudioUnitHost {
 
     private func load(descriptor: MPX68KAudioUnitDescriptor,
                       completion: @escaping (String?) -> Void) {
+        // Keep the previous instrument's latest state before its instance is
+        // detached. Loading is asynchronous, so the app can otherwise quit
+        // while the old instance has already been cleared from the host.
+        saveState()
         loadGeneration &+= 1
         let generation = loadGeneration
         loadingComponentID = descriptor.id
@@ -1386,6 +1427,7 @@ private final class MPX68KAudioUnitHost {
 
             self.audioUnit = unit
             self.currentDescriptor = descriptor
+            self.restoreSavedState(for: descriptor, in: unit)
             self.audioUnitMixer.outputVolume = Self.linearGain(for: self.gainDB)
             if self.shouldRun {
                 self.start { error in
@@ -1437,6 +1479,60 @@ private final class MPX68KAudioUnitHost {
         completion(nil)
     }
 
+    private func restoreSavedState(for descriptor: MPX68KAudioUnitDescriptor,
+                                   in unit: AVAudioUnit) {
+        guard let data = UserDefaults.standard.data(forKey: Self.stateDefaultsKey(for: descriptor)) else {
+            return
+        }
+
+        do {
+            var format = PropertyListSerialization.PropertyListFormat.binary
+            guard let state = try PropertyListSerialization.propertyList(
+                from: data,
+                options: [],
+                format: &format
+            ) as? [String: Any] else {
+                warningLog(
+                    "Saved Audio Unit state has an invalid format: \(descriptor.name)",
+                    category: .audio
+                )
+                return
+            }
+
+            // AUAudioUnit.fullState is bridged to kAudioUnitProperty_ClassInfo,
+            // so this restores both AUv3 and AUv2 music devices through the
+            // same API. It is applied before the engine is started.
+            unit.auAudioUnit.fullState = state
+            guard unit.auAudioUnit.fullState != nil else {
+                warningLog(
+                    "Audio Unit rejected its saved state: \(descriptor.name)",
+                    category: .audio
+                )
+                return
+            }
+            notifyParameterListeners(for: unit)
+            debugLog("Restored Audio Unit state: \(descriptor.name)", category: .audio)
+        } catch {
+            warningLog(
+                "Cannot deserialize Audio Unit state for \(descriptor.name): \(error.localizedDescription)",
+                category: .audio
+            )
+        }
+    }
+
+    private func notifyParameterListeners(for unit: AVAudioUnit) {
+        let underlyingAudioUnit: AudioUnit? = unit.audioUnit
+        guard let underlyingAudioUnit else { return }
+
+        var changedUnit = AudioUnitParameter(
+            mAudioUnit: underlyingAudioUnit,
+            mParameterID: kAUParameterListener_AnyParameter,
+            mScope: kAudioUnitScope_Global,
+            mElement: 0
+        )
+        _ = AUParameterListenerNotify(nil, nil, &changedUnit)
+    }
+
     private func start(completion: @escaping (String?) -> Void) {
         guard isEnabled, audioUnit != nil else {
             completion(nil)
@@ -1467,6 +1563,10 @@ private final class MPX68KAudioUnitHost {
 
     private static func linearGain(for decibels: Double) -> Float {
         Float(pow(10.0, decibels / 20.0))
+    }
+
+    private static func stateDefaultsKey(for descriptor: MPX68KAudioUnitDescriptor) -> String {
+        "\(audioUnitStateDefaultsPrefix)\(descriptor.id)"
     }
 
     private static func hostError(_ message: String) -> NSError {
