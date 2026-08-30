@@ -89,6 +89,8 @@ static float s_audioLastOutputRight = 0.0f;
 static uint32_t s_audioUnderrunRun = 0;
 static uint32_t s_audioRecoveryRampRemaining = 0;
 
+static int16_t clamp16(int value);
+
 DWORD ratebase = 62500;
 long DSound_PreCounter = 0;
 static volatile unsigned int s_dsound_last_callback_bytes = 0;
@@ -173,6 +175,39 @@ void X68000_AudioRenderCapture(const int16_t *buffer, unsigned int frames)
             & (X68_AUDIO_CAPTURE_RING_CAPACITY - 1u);
         s_audioCaptureRing[ringIndex * 2u] = buffer[sourceIndex];
         s_audioCaptureRing[ringIndex * 2u + 1u] = buffer[sourceIndex + 1u];
+    }
+    writeFrame += framesToWrite;
+    atomic_store_explicit(&s_audioCaptureWriteFrame, writeFrame,
+                          memory_order_release);
+}
+
+void X68000_AudioRenderCaptureFloat32(const float *buffer, unsigned int frames)
+{
+    if (!buffer || frames == 0
+        || atomic_load_explicit(&s_audioCaptureEnabled, memory_order_acquire) == 0) {
+        return;
+    }
+
+    uint64_t writeFrame = atomic_load_explicit(&s_audioCaptureWriteFrame,
+                                                memory_order_relaxed);
+    const uint64_t readFrame = atomic_load_explicit(&s_audioCaptureReadFrame,
+                                                     memory_order_acquire);
+    const uint64_t queuedFrames = writeFrame - readFrame;
+    if (queuedFrames >= X68_AUDIO_CAPTURE_RING_CAPACITY) {
+        return;
+    }
+
+    const uint32_t writableFrames =
+        (uint32_t)(X68_AUDIO_CAPTURE_RING_CAPACITY - queuedFrames);
+    const uint32_t framesToWrite = (frames < writableFrames) ? frames : writableFrames;
+    for (uint32_t frame = 0; frame < framesToWrite; ++frame) {
+        const uint32_t sourceIndex = frame * 2u;
+        const uint32_t ringIndex = (uint32_t)(writeFrame + frame)
+            & (X68_AUDIO_CAPTURE_RING_CAPACITY - 1u);
+        s_audioCaptureRing[ringIndex * 2u] = clamp16(
+            (int)lrintf(buffer[sourceIndex] * 32767.0f));
+        s_audioCaptureRing[ringIndex * 2u + 1u] = clamp16(
+            (int)lrintf(buffer[sourceIndex + 1u] * 32767.0f));
     }
     writeFrame += framesToWrite;
     atomic_store_explicit(&s_audioCaptureWriteFrame, writeFrame,

@@ -113,28 +113,30 @@ flowchart LR
 
 RS-232C MIDIは、通常のSCC PTY/TCP/file出力とは別の専用設定として扱う。物理デバイスではraw MIDI 1.0の31,250 baud、8 data bits、no parity、1 stop bit（8-N-1）を必須条件とし、テキスト変換・改行付加・パケット化を行わない。既存のSCC Port Bを共用する場合は、通常のゲストシリアル出力とMIDIバイト列が混ざらないよう`serialMIDI`モードを排他的に設ける。推奨実装は、ゲストの汎用SCC出力とは別の専用host serial transportを持つことである。
 
-AUの候補は`kAudioUnitType_MusicDevice`、かつ`hasMIDIInput == true`を基本とする。`kAudioUnitType_MusicEffect`は音声入力とMIDI入力を同時に扱う別の接続モデルなので、初期スコープでは対象外とし、後続のEffect slotで扱う。通常の`kAudioUnitType_Effect`はMIDI音源の代替にはならない。
+AU音源の候補は`kAudioUnitType_MusicDevice`、かつ`hasMIDIInput == true`を基本とする。内蔵FM+ADPCMのEffect slotは別ホストとし、候補を`kAudioUnitType_Effect`と`kAudioUnitType_MusicEffect`に限定する。通常の`kAudioUnitType_Effect`はMIDIを受けず、`kAudioUnitType_MusicEffect`だけがゲストMIDIを受ける。
 
-### 3.3 音声グラフ（Phase 2以降の目標）
+### 3.3 音声グラフ
 
 ```text
 AudioRenderCore (FM+ADPCM)
         │  emulator bus, Float32 stereo
         ▼
-AVAudioSourceNode ──> emulatorMixer ──┐
-                                     ├─> AVAudioEngine.mainMixerNode ──> outputNode
-AU Music Device ─────────────────────┘                         │
-                                                               └─> post-mix tap
+AVAudioSourceNode
+        │
+Effect Slot 1 → Effect Slot 2 → Effect Slot 3 → Effect Slot 4
+        │  unselected slots are bypassed
+        ▼
+mainMixerNode → outputNode
 ```
 
-- `AVAudioSourceNode`は固定のFloat32 stereo formatで作る。
+- `AVAudioSourceNode`は固定のFloat32 stereo formatで作り、選択されたEffectをスロット順に直列接続する。
 - `AudioRenderCore`は既存のエミュレーションサンプルレートを保持し、必要なら固定小数点のresamplerでhost/device rateへ変換する。AU、エミュレータ、main mixerは同じhost formatで動かす。
 - FM+ADPCMの従来の音量設定（`OPM_VOL`、`PCM_VOL`）を維持し、AU音量とmaster音量を別に持つ。
 - AUは専用`auMixer` busを経由させ、設定画面のAU音量はこのbusのgainだけを変更する。AUプラグイン内部のpreset/parameterを直接変更する操作とは分離する。
-- 既存の`AudioStream.recordingTap`はエミュレータ単体のPCMを受けている。移行後はmain mixerのpost-mix tapへ移し、画面録画にAU音声も含める。
+- 既存の`AudioStream.recordingTap`はエミュレータ単体のPCMを受けている。Effect graphのSourceNodeでも同じPCMキャプチャリングへ変換する。
 - 音声render中にSwift allocation、lock、ログ、ファイルI/O、CoreMIDI呼び出しを行わない。
 
-### 3.4 時刻同期（Phase 2以降の目標）
+### 3.4 時刻同期
 
 現行MIDIは`MIDIPacketList`のtimestampを0とし、Swift側の遅延は`CFAbsoluteTimeGetCurrent()`によるwall-clock queueである。AU音源とFM/ADPCMを同期させるには不十分なので、送信イベントにエミュレータ時刻とhost sample timeを付ける。
 

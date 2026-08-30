@@ -19,6 +19,11 @@ MPX68K repository:
   select the instrument, and enable **Use Audio Unit**. The panel also opens
   the instrument's custom UI and controls its output gain. The built-in
   emulator audio remains active in parallel.
+- **Built-in FM/ADPCM Audio Unit effects**: Four serial effect slots are
+  available in the same panel. They enumerate only `Effect` and `MusicEffect`
+  components, open each effect's custom UI, send emulator MIDI to
+  `MusicEffect` slots, and save/restore each slot's AU state independently of
+  the optional instrument AU.
 - **ymfm YM2151 audio**: The active FM generator uses the pinned
   `third_party/ymfm` submodule and adapts its output to the host audio device
   rate.
@@ -166,7 +171,7 @@ built automatically by each Xcode application target; ymfm is pinned as the
 ### macOS Menu Reference
 
 #### MPX68K Menu
-- **MIDI & Audio Unit…**: Install a MIDI-capable macOS Music Device Audio Unit, press **Refresh**, then select it under **Instrument** and enable **Use Audio Unit**. The panel also provides the instrument's output gain, opens its custom UI, and configures the built-in YM2151 render path and audio buffer size.
+- **MIDI & Audio Unit…**: Install a MIDI-capable macOS Music Device Audio Unit, press **Refresh**, then select it under **Instrument** and enable **Use Audio Unit**. The panel also provides the instrument's output gain, opens its custom UI, configures the built-in YM2151 render path and audio buffer size, and provides four serial **FM + ADPCM Effect** slots with their own custom UIs and saved states.
 
 #### FDD Menu
 - **Open Drive 0…** / **Open Drive 1…**: Insert a floppy image
@@ -203,7 +208,7 @@ built automatically by each Xcode application target; ymfm is pinned as the
 - **Disk State Management → Save Current State / Clear Saved State / Show State Information**
 - **JoyportU Settings → Disabled / Notify Mode / Command Mode**
 
-The MIDI & Audio Unit panel keeps the emulator audio active while optionally hosting a macOS Music Device Audio Unit (AUv2 or AUv3) in parallel. CoreMIDI is OUT-A; RS-232C is OUT-B and uses a selected `/dev/cu.*` or `/dev/tty.*` device at MIDI's 31,250 baud, 8-N-1 framing. MIDI events retain their host-clock timing through the parser, and CoreMIDI/AU scheduling uses a shared look-ahead timeline. Built-in YM2151 audio is adapted to match the host device rate; Direct AudioUnit is the low-latency asynchronous path, while AudioQueue is available for compatibility. MIDI IN is not connected yet.
+The MIDI & Audio Unit panel keeps the emulator audio active while optionally hosting a macOS Music Device Audio Unit (AUv2 or AUv3) in parallel. CoreMIDI is OUT-A; RS-232C is OUT-B and uses a selected `/dev/cu.*` or `/dev/tty.*` device at MIDI's 31,250 baud, 8-N-1 framing. Built-in YM2151 audio is adapted to match the host device rate; Direct AudioUnit is the low-latency asynchronous path, while AudioQueue is available for compatibility. The four built-in FM + ADPCM effect slots are a separate serial Audio Unit chain: ordinary effects process audio, while Music Effects also receive the emulator's MIDI events. MIDI IN is not connected yet.
 
 #### Joycard Input
 - **Arrow Keys** or **WASD**: 8-direction movement

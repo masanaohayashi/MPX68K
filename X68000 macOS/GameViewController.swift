@@ -2266,8 +2266,12 @@ private struct MIDIAndAudioSettingsPanel: View {
     @State private var midiDestinations: [MPX68KMIDIDestination]
     @State private var serialDevices: [MPX68KRS232CDevice]
     @State private var audioUnits: [MPX68KAudioUnitDescriptor]
+    @State private var audioEffects: [MPX68KAudioUnitDescriptor]
+    @State private var selectedAudioEffectIDs: [String]
+    @State private var isApplyingAudioEffects: Bool
     @State private var statusMessage = ""
     @State private var suppressNextAudioUnitChange = false
+    @State private var suppressNextAudioEffectChange = false
 
     init(sceneReference: MPX68KGameSceneReference) {
         self.sceneReference = sceneReference
@@ -2281,6 +2285,9 @@ private struct MIDIAndAudioSettingsPanel: View {
         let destinations = sceneReference.scene?.availableMIDIDestinations() ?? []
         let devices = sceneReference.scene?.availableRS232CDevices() ?? []
         let units = sceneReference.scene?.availableAudioUnits() ?? []
+        let effectSettings = sceneReference.scene?.currentAudioEffectSettings()
+            ?? MPX68KAudioEffectSettings()
+        let effects = sceneReference.scene?.availableAudioEffects() ?? []
 
         _useCoreMIDI = State(initialValue: midiSettings.coreMIDIEnabled)
         _selectedCoreMIDIID = State(
@@ -2303,6 +2310,11 @@ private struct MIDIAndAudioSettingsPanel: View {
         _midiDestinations = State(initialValue: destinations)
         _serialDevices = State(initialValue: devices)
         _audioUnits = State(initialValue: units)
+        _audioEffects = State(initialValue: effects)
+        _selectedAudioEffectIDs = State(
+            initialValue: effectSettings.componentIDs.map { $0 ?? "" }
+        )
+        _isApplyingAudioEffects = State(initialValue: false)
     }
 
     var body: some View {
@@ -2334,6 +2346,8 @@ private struct MIDIAndAudioSettingsPanel: View {
                     Divider()
                     builtInAudioSection
                     Divider()
+                    audioEffectSection
+                    Divider()
                     audioUnitSection
 
                     if !statusMessage.isEmpty {
@@ -2359,6 +2373,13 @@ private struct MIDIAndAudioSettingsPanel: View {
             }
         }
         .onChange(of: selectedAudioUnitID) { _ in applyAudioUnitSettings() }
+        .onChange(of: selectedAudioEffectIDs) { _ in
+            if suppressNextAudioEffectChange {
+                suppressNextAudioEffectChange = false
+            } else {
+                applyAudioEffectSettings()
+            }
+        }
         .onChange(of: audioUnitGainDB) { _ in
             applyAudioUnitVolume(persist: false, updateStatus: false)
         }
@@ -2519,6 +2540,72 @@ private struct MIDIAndAudioSettingsPanel: View {
         }
     }
 
+    private var audioEffectSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("FM + ADPCM EFFECT CHAIN")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(.secondary)
+
+            Text("Four serial Audio Unit effect slots for the built-in FM/ADPCM sound.")
+                .font(.system(size: 12))
+                .foregroundColor(.secondary)
+
+            ForEach(0..<MPX68KAudioEffectSettings.slotCount, id: \.self) { slot in
+                HStack(spacing: 10) {
+                    Picker(
+                        "Slot \(slot + 1)",
+                        selection: Binding(
+                            get: {
+                                selectedAudioEffectIDs.indices.contains(slot)
+                                    ? selectedAudioEffectIDs[slot]
+                                    : ""
+                            },
+                            set: { value in
+                                guard selectedAudioEffectIDs.indices.contains(slot) else {
+                                    return
+                                }
+                                selectedAudioEffectIDs[slot] = value
+                            }
+                        )
+                    ) {
+                        Text("Bypass").tag("")
+                        ForEach(audioEffects) { effect in
+                            Text(effect.name).tag(effect.id)
+                        }
+                    }
+                    .labelsHidden()
+                    .frame(maxWidth: .infinity)
+                    .disabled(isApplyingAudioEffects)
+
+                    Button("Open UI") {
+                        openAudioEffectEditor(slot: slot)
+                    }
+                    .disabled(
+                        isApplyingAudioEffects
+                            || selectedAudioEffectIDs.indices.contains(slot) == false
+                            || selectedAudioEffectIDs[slot].isEmpty
+                    )
+                }
+            }
+
+            if audioEffects.isEmpty {
+                Text(
+                    "No Effect or Music Effect Audio Units were found. "
+                        + "Install an Audio Unit effect, then press Refresh."
+                )
+                    .font(.system(size: 12))
+                    .foregroundColor(.secondary)
+            }
+
+            Text(
+                "Music Effect components receive the emulator's MIDI events; ordinary effects "
+                    + "process audio only. This chain is separate from the Audio Unit instrument above."
+            )
+                .font(.system(size: 12))
+                .foregroundColor(.secondary)
+        }
+    }
+
     private var audioUnitSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("AUDIO UNIT")
@@ -2642,6 +2729,26 @@ private struct MIDIAndAudioSettingsPanel: View {
         statusMessage = error ?? "Audio Unit volume saved"
     }
 
+    private func applyAudioEffectSettings() {
+        guard let scene = sceneReference.scene else { return }
+        let settings = MPX68KAudioEffectSettings(
+            componentIDs: selectedAudioEffectIDs.map { $0.isEmpty ? nil : $0 }
+        )
+        isApplyingAudioEffects = true
+        scene.applyAudioEffectSettings(settings) { error in
+            DispatchQueue.main.async {
+                isApplyingAudioEffects = false
+                if error != nil {
+                    suppressNextAudioEffectChange = true
+                    selectedAudioEffectIDs = scene.currentAudioEffectSettings()
+                        .componentIDs
+                        .map { $0 ?? "" }
+                }
+                statusMessage = error ?? "Built-in effect chain settings saved"
+            }
+        }
+    }
+
     private func applyInternalAudioOutputSettings() {
         guard let scene = sceneReference.scene else { return }
         if let error = scene.applyInternalAudioOutputSettings(
@@ -2694,6 +2801,7 @@ private struct MIDIAndAudioSettingsPanel: View {
         midiDestinations = scene.availableMIDIDestinations()
         serialDevices = scene.availableRS232CDevices()
         audioUnits = scene.availableAudioUnits()
+        audioEffects = scene.availableAudioEffects()
 
         if !midiDestinations.contains(where: { String($0.id) == selectedCoreMIDIID }) {
             selectedCoreMIDIID = ""
@@ -2703,6 +2811,11 @@ private struct MIDIAndAudioSettingsPanel: View {
         }
         if !audioUnits.contains(where: { $0.id == selectedAudioUnitID }) {
             selectedAudioUnitID = ""
+        }
+        for slot in selectedAudioEffectIDs.indices {
+            if !audioEffects.contains(where: { $0.id == selectedAudioEffectIDs[slot] }) {
+                selectedAudioEffectIDs[slot] = ""
+            }
         }
         statusMessage = "Device list refreshed"
     }
@@ -2718,6 +2831,30 @@ private struct MIDIAndAudioSettingsPanel: View {
                     let windowController = AudioUnitEditorWindowController(
                         viewController: viewController,
                         title: name
+                    )
+                    scene.audioUnitEditorWindowController = windowController
+                    windowController.show()
+                case .failure(let error):
+                    statusMessage = error.localizedDescription
+                }
+            }
+        }
+    }
+
+    private func openAudioEffectEditor(slot: Int) {
+        guard let scene = sceneReference.scene else { return }
+        scene.showAudioEffectEditor(slot: slot) { result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let viewController):
+                    let effectID = selectedAudioEffectIDs.indices.contains(slot)
+                        ? selectedAudioEffectIDs[slot]
+                        : ""
+                    let name = audioEffects.first(where: { $0.id == effectID })?.name
+                        ?? "Audio Unit Effect"
+                    let windowController = AudioUnitEditorWindowController(
+                        viewController: viewController,
+                        title: "Slot \(slot + 1): \(name)"
                     )
                     scene.audioUnitEditorWindowController = windowController
                     windowController.show()

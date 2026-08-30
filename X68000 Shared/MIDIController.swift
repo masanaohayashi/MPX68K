@@ -169,6 +169,27 @@ public struct MPX68KAudioUnitSettings: Equatable {
     }
 }
 
+/// The four serial Audio Unit effect slots applied to the built-in FM/ADPCM
+/// output. A nil component ID means that the slot is bypassed.
+public struct MPX68KAudioEffectSettings: Equatable {
+    public static let slotCount = 4
+
+    public var componentIDs: [String?]
+
+    public init(componentIDs: [String?] = []) {
+        let selected: [String?] = componentIDs.prefix(Self.slotCount).map { componentID in
+            guard let componentID, !componentID.isEmpty else { return nil }
+            return componentID
+        }
+        self.componentIDs = selected
+            + Array(repeating: nil, count: max(0, Self.slotCount - selected.count))
+    }
+
+    public var hasSelectedEffect: Bool {
+        componentIDs.contains { $0 != nil }
+    }
+}
+
 private final class MPX68KSerialMIDIOutput {
     private static let allowedDevicePrefixes = ["/dev/cu.", "/dev/tty."]
     private static let maxQueuedBytes = 64 * 1024

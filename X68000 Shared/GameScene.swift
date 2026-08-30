@@ -136,6 +136,7 @@ class GameScene: SKScene {
     private let audioUnitEnabledDefaultsKey = "AudioUnitOutput.Enabled"
     private let audioUnitIDDefaultsKey = "AudioUnitOutput.ComponentID"
     private let audioUnitGainDefaultsKey = "AudioUnitOutput.GainDB"
+    private let audioEffectSlotDefaultsKeyPrefix = "AudioEffectOutput.Slot"
     private let internalAudioModeDefaultsKey = "InternalAudio.RenderMode"
     private let internalAudioBufferFramesDefaultsKey = "InternalAudio.BufferFrames"
     private let internalAudioADPCMGainDefaultsKey = "InternalAudio.ADPCMGainDB"
@@ -143,6 +144,7 @@ class GameScene: SKScene {
     private let internalAudioADPCMLowPassCutoffDefaultsKey = "InternalAudio.ADPCMLowPassCutoffHz"
     private var midiOutputSettings = MPX68KMIDIOutputSettings()
     private var audioUnitSettings = MPX68KAudioUnitSettings()
+    private var audioEffectSettings = MPX68KAudioEffectSettings()
     private var internalAudioSettings = MPX68KInternalAudioSettings()
     #endif
     
@@ -1092,6 +1094,17 @@ class GameScene: SKScene {
         midiController.setAudioUnitSender { [weak stream] event, hostTime in
             stream?.sendAudioUnitMIDI(event, hostTime: hostTime)
         }
+        stream.applyAudioEffectSettings(audioEffectSettings) { error in
+            if let error = error {
+                warningLog("Audio effect startup: \(error)", category: .audio)
+                self.audioEffectSettings = MPX68KAudioEffectSettings()
+                for slot in 0..<MPX68KAudioEffectSettings.slotCount {
+                    self.userDefaults.removeObject(
+                        forKey: "\(self.audioEffectSlotDefaultsKeyPrefix)\(slot)"
+                    )
+                }
+            }
+        }
         stream.applyAudioUnitSettings(audioUnitSettings) { error in
             if let error = error {
                 warningLog("Audio Unit startup: \(error)", category: .audio)
@@ -1772,6 +1785,12 @@ class GameScene: SKScene {
             gainDB: gain
         )
 
+        audioEffectSettings = MPX68KAudioEffectSettings(
+            componentIDs: (0..<MPX68KAudioEffectSettings.slotCount).map { slot in
+                defaults.string(forKey: "\(audioEffectSlotDefaultsKeyPrefix)\(slot)")
+            }
+        )
+
         let renderMode = defaults.string(forKey: internalAudioModeDefaultsKey)
             .flatMap(MPX68KInternalAudioRenderMode.init(rawValue:))
             ?? .asynchronous
@@ -1801,6 +1820,10 @@ class GameScene: SKScene {
         audioUnitSettings
     }
 
+    func currentAudioEffectSettings() -> MPX68KAudioEffectSettings {
+        audioEffectSettings
+    }
+
     func currentInternalAudioSettings() -> MPX68KInternalAudioSettings {
         internalAudioSettings
     }
@@ -1815,6 +1838,10 @@ class GameScene: SKScene {
 
     func availableAudioUnits() -> [MPX68KAudioUnitDescriptor] {
         AudioStream.availableAudioUnits()
+    }
+
+    func availableAudioEffects() -> [MPX68KAudioUnitDescriptor] {
+        AudioStream.availableAudioEffects()
     }
 
     @discardableResult
@@ -1981,6 +2008,46 @@ class GameScene: SKScene {
         return nil
     }
 
+    func applyAudioEffectSettings(
+        _ settings: MPX68KAudioEffectSettings,
+        persist: Bool = true,
+        completion: @escaping (String?) -> Void = { _ in }
+    ) {
+        audioEffectSettings = MPX68KAudioEffectSettings(
+            componentIDs: settings.componentIDs
+        )
+        if persist {
+            for slot in 0..<MPX68KAudioEffectSettings.slotCount {
+                let key = "\(audioEffectSlotDefaultsKeyPrefix)\(slot)"
+                if let componentID = audioEffectSettings.componentIDs[slot] {
+                    userDefaults.set(componentID, forKey: key)
+                } else {
+                    userDefaults.removeObject(forKey: key)
+                }
+            }
+        }
+
+        guard let stream = audioStream else {
+            let error = "Audio stream is not ready"
+            completion(error)
+            return
+        }
+        stream.applyAudioEffectSettings(audioEffectSettings) { error in
+            if let error = error {
+                self.audioEffectSettings = MPX68KAudioEffectSettings()
+                if persist {
+                    for slot in 0..<MPX68KAudioEffectSettings.slotCount {
+                        self.userDefaults.removeObject(
+                            forKey: "\(self.audioEffectSlotDefaultsKeyPrefix)\(slot)"
+                        )
+                    }
+                }
+                warningLog("Audio effect configuration: \(error)", category: .audio)
+            }
+            completion(error)
+        }
+    }
+
     func showAudioUnitEditor(completion: @escaping (Result<NSViewController, Error>) -> Void) {
         guard let stream = audioStream else {
             completion(.failure(NSError(
@@ -1991,6 +2058,21 @@ class GameScene: SKScene {
             return
         }
         stream.showAudioUnitEditor(completion: completion)
+    }
+
+    func showAudioEffectEditor(
+        slot: Int,
+        completion: @escaping (Result<NSViewController, Error>) -> Void
+    ) {
+        guard let stream = audioStream else {
+            completion(.failure(NSError(
+                domain: "MPX68K.AudioEffectHost",
+                code: 2,
+                userInfo: [NSLocalizedDescriptionKey: "Audio stream is not ready"]
+            )))
+            return
+        }
+        stream.showAudioEffectEditor(slot: slot, completion: completion)
     }
 
     func saveAudioUnitState() {

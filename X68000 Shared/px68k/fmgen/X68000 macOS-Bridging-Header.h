@@ -41,6 +41,7 @@ void X68000_AudioRenderConsumeInterleavedFloat32(float* buffer, unsigned int fra
 void X68000_AudioRenderConsumeInt16(short* buffer, unsigned int frames);
 void X68000_AudioRenderCaptureEnable(int enabled);
 void X68000_AudioRenderCapture(const short* buffer, unsigned int frames);
+void X68000_AudioRenderCaptureFloat32(const float* buffer, unsigned int frames);
 unsigned int X68000_AudioRenderCaptureRead(short* buffer, unsigned int maximumFrames);
 void X68000_Key_Down( unsigned int vkcode );
 void X68000_Key_Up( unsigned int vkcode );

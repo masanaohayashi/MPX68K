@@ -255,6 +255,7 @@ class AudioStream {
     #if os(macOS)
     private let audioUnitHost = MPX68KAudioUnitHost()
     private var directAudioUnitOutput: MPX68KDirectAudioUnitOutput?
+    private var audioEffectHost: MPX68KAudioEffectHost?
     #endif
 
     var dataFormat:     AudioStreamBasicDescription
@@ -266,6 +267,7 @@ class AudioStream {
 	var samplingrate = 22050
     private var internalAudioSettings: MPX68KInternalAudioSettings
     private var isInternalOutputRunning = false
+    private var shouldRunInternalOutput = false
     private(set) var outputSampleRate = 22050
 
     init(samplingrate: Int,
@@ -428,6 +430,22 @@ class AudioStream {
 
     private func startInternalOutput() {
         #if os(macOS)
+        if let audioEffectHost = audioEffectHost {
+            if let error = audioEffectHost.play() {
+                errorLog("Failed to start Audio Unit effect chain: \(error)", category: .audio)
+                audioEffectHost.close()
+                self.audioEffectHost = nil
+                X68000_AudioRenderReset()
+                if let fallbackError = configureInternalOutput() {
+                    errorLog("Built-in audio fallback failed: \(fallbackError)", category: .audio)
+                }
+                startInternalOutput()
+            } else {
+                isInternalOutputRunning = audioEffectHost.isRunning
+            }
+            return
+        }
+
         if let directAudioUnitOutput = directAudioUnitOutput {
             if let error = directAudioUnitOutput.start() {
                 errorLog("Failed to start direct AudioUnit: \(error)", category: .audio)
@@ -457,6 +475,12 @@ class AudioStream {
 
     private func stopInternalOutput() {
         #if os(macOS)
+        if let audioEffectHost = audioEffectHost {
+            audioEffectHost.stop()
+            isInternalOutputRunning = false
+            return
+        }
+
         if let directAudioUnitOutput = directAudioUnitOutput {
             directAudioUnitOutput.stop()
             isInternalOutputRunning = false
@@ -475,6 +499,12 @@ class AudioStream {
 
     private func pauseInternalOutput() {
         #if os(macOS)
+        if let audioEffectHost = audioEffectHost {
+            audioEffectHost.pause()
+            isInternalOutputRunning = false
+            return
+        }
+
         if let directAudioUnitOutput = directAudioUnitOutput {
             directAudioUnitOutput.pause()
             isInternalOutputRunning = false
@@ -516,6 +546,7 @@ class AudioStream {
     func play()
     {
         debugLog("Audio Play", category: .audio)
+        shouldRunInternalOutput = true
         startInternalOutput()
         #if os(macOS)
         audioUnitHost.play()
@@ -525,6 +556,7 @@ class AudioStream {
     func stop()
     {
         debugLog("Audio Stop", category: .audio)
+        shouldRunInternalOutput = false
         stopInternalOutput()
         #if os(macOS)
         audioUnitHost.stop()
@@ -534,6 +566,7 @@ class AudioStream {
     func pause()
     {
         debugLog("Audio Pause", category: .audio)
+        shouldRunInternalOutput = false
         pauseInternalOutput()
         #if os(macOS)
         audioUnitHost.pause()
@@ -544,6 +577,10 @@ class AudioStream {
         debugLog("Audio Close", category: .audio)
 
         #if os(macOS)
+        shouldRunInternalOutput = false
+        saveAudioUnitState()
+        audioEffectHost?.close()
+        audioEffectHost = nil
         directAudioUnitOutput?.close()
         directAudioUnitOutput = nil
         #endif
@@ -574,7 +611,14 @@ class AudioStream {
             || settings.bufferFrames != internalAudioSettings.bufferFrames
         guard outputPathChanged else { return nil }
 
-        let wasRunning = isInternalOutputRunning
+        #if os(macOS)
+        if let audioEffectHost = audioEffectHost {
+            internalAudioSettings = settings
+            return audioEffectHost.applyBufferFrames(settings.bufferFrames)
+        }
+        #endif
+
+        let wasRunning = shouldRunInternalOutput
         if wasRunning {
             stopInternalOutput()
         }
@@ -639,6 +683,10 @@ class AudioStream {
         MPX68KAudioUnitHost.availableAudioUnits()
     }
 
+    static func availableAudioEffects() -> [MPX68KAudioUnitDescriptor] {
+        MPX68KAudioEffectHost.availableAudioEffects()
+    }
+
     func applyAudioUnitSettings(_ settings: MPX68KAudioUnitSettings,
                                 completion: @escaping (String?) -> Void) {
         audioUnitHost.apply(settings, completion: completion)
@@ -650,6 +698,7 @@ class AudioStream {
 
     func sendAudioUnitMIDI(_ event: [UInt8], hostTime: UInt64) {
         audioUnitHost.sendMIDI(event, hostTime: hostTime)
+        audioEffectHost?.sendMIDI(event, hostTime: hostTime)
     }
 
     func showAudioUnitEditor(completion: @escaping (Result<NSViewController, Error>) -> Void) {
@@ -658,6 +707,107 @@ class AudioStream {
 
     func saveAudioUnitState() {
         audioUnitHost.saveState()
+        audioEffectHost?.saveStates()
+    }
+
+    func applyAudioEffectSettings(
+        _ settings: MPX68KAudioEffectSettings,
+        completion: @escaping (String?) -> Void
+    ) {
+        let normalizedSettings = MPX68KAudioEffectSettings(
+            componentIDs: settings.componentIDs
+        )
+        let hasSelectedEffect = normalizedSettings.hasSelectedEffect
+
+        guard hasSelectedEffect else {
+            guard let oldHost = audioEffectHost else {
+                completion(nil)
+                return
+            }
+
+            let wasRunning = shouldRunInternalOutput
+            oldHost.close()
+            audioEffectHost = nil
+            X68000_AudioRenderReset()
+            let error = configureInternalOutput()
+            if wasRunning {
+                startInternalOutput()
+            }
+            completion(error)
+            return
+        }
+
+        let wasRunning = shouldRunInternalOutput
+        let hadEffectHost = audioEffectHost != nil
+        if !hadEffectHost {
+            // The direct/queue output and an AVAudioEngine output cannot both
+            // own the built-in stream. Stop and release the former before the
+            // asynchronous effect instances are attached.
+            stopInternalOutput()
+            directAudioUnitOutput?.close()
+            directAudioUnitOutput = nil
+            disposeAudioQueue()
+            X68000_AudioRenderReset()
+            audioEffectHost = MPX68KAudioEffectHost()
+        }
+
+        guard let effectHost = audioEffectHost else {
+            completion("Audio effect host is not available")
+            return
+        }
+        let preferredSampleRate = Double(outputSampleRate)
+        effectHost.apply(
+            normalizedSettings,
+            preferredSampleRate: preferredSampleRate,
+            bufferFrames: internalAudioSettings.bufferFrames
+        ) { [weak self, weak effectHost] error in
+            guard let self = self, let effectHost = effectHost,
+                  self.audioEffectHost === effectHost else {
+                completion(nil)
+                return
+            }
+
+            if let error = error {
+                // If a component disappears or rejects instantiation, return
+                // to the normal built-in path so a bad optional effect never
+                // leaves the emulator silent.
+                effectHost.close()
+                self.audioEffectHost = nil
+                X68000_AudioRenderReset()
+                let fallbackError = self.configureInternalOutput()
+                if wasRunning {
+                    self.startInternalOutput()
+                }
+                if let fallbackError {
+                    completion("\(error); fallback failed: \(fallbackError)")
+                } else {
+                    completion(error)
+                }
+                return
+            }
+
+            self.outputSampleRate = Int(effectHost.sampleRate.rounded())
+            if wasRunning {
+                _ = effectHost.play()
+                self.isInternalOutputRunning = effectHost.isRunning
+            }
+            completion(nil)
+        }
+    }
+
+    func showAudioEffectEditor(
+        slot: Int,
+        completion: @escaping (Result<NSViewController, Error>) -> Void
+    ) {
+        guard let audioEffectHost else {
+            completion(.failure(NSError(
+                domain: "MPX68K.AudioEffectHost",
+                code: 2,
+                userInfo: [NSLocalizedDescriptionKey: "No Audio Unit effect chain is loaded"]
+            )))
+            return
+        }
+        audioEffectHost.showEditor(slot: slot, completion: completion)
     }
 
     #endif
@@ -885,7 +1035,7 @@ private final class MPX68KDirectAudioUnitOutput {
         return noErr
     }
 
-    private static func defaultOutputDevice() -> AudioDeviceID? {
+    fileprivate static func defaultOutputDevice() -> AudioDeviceID? {
         var address = AudioObjectPropertyAddress(
             mSelector: kAudioHardwarePropertyDefaultOutputDevice,
             mScope: kAudioObjectPropertyScopeGlobal,
@@ -907,7 +1057,7 @@ private final class MPX68KDirectAudioUnitOutput {
         return device
     }
 
-    private static func deviceSampleRate(_ device: AudioDeviceID) -> Double? {
+    fileprivate static func deviceSampleRate(_ device: AudioDeviceID) -> Double? {
         var address = AudioObjectPropertyAddress(
             mSelector: kAudioDevicePropertyNominalSampleRate,
             mScope: kAudioObjectPropertyScopeGlobal,
@@ -929,7 +1079,7 @@ private final class MPX68KDirectAudioUnitOutput {
         return sampleRate
     }
 
-    private static func deviceBufferSize(_ device: AudioDeviceID) -> UInt32? {
+    fileprivate static func deviceBufferSize(_ device: AudioDeviceID) -> UInt32? {
         var address = AudioObjectPropertyAddress(
             mSelector: kAudioDevicePropertyBufferFrameSize,
             mScope: kAudioObjectPropertyScopeGlobal,
@@ -950,8 +1100,8 @@ private final class MPX68KDirectAudioUnitOutput {
         return status == noErr ? frames : nil
     }
 
-    private static func setDeviceBufferSize(_ frames: UInt32,
-                                            device: AudioDeviceID) -> OSStatus {
+    fileprivate static func setDeviceBufferSize(_ frames: UInt32,
+                                                device: AudioDeviceID) -> OSStatus {
         var address = AudioObjectPropertyAddress(
             mSelector: kAudioDevicePropertyBufferFrameSize,
             mScope: kAudioObjectPropertyScopeGlobal,
@@ -1573,6 +1723,854 @@ private final class MPX68KAudioUnitHost {
         NSError(domain: "MPX68K.AudioUnitHost",
                 code: 1,
                 userInfo: [NSLocalizedDescriptionKey: message])
+    }
+}
+
+private final class MPX68KAudioEffectHost {
+    private static let stateDefaultsPrefix = "MPX68K.AudioEffectState."
+    private static let loadQueue = DispatchQueue(
+        label: "MPX68K.AudioEffectHost.load",
+        qos: .userInitiated
+    )
+    private static let maximumPendingMIDIEvents = 2048
+
+    private struct EffectInstance {
+        let slot: Int
+        let descriptor: MPX68KAudioUnitDescriptor
+        let unit: AVAudioUnit
+    }
+
+    private struct PendingMIDIEvent {
+        let data: [UInt8]
+        let hostTime: UInt64
+    }
+
+    private let engine = AVAudioEngine()
+    private var sourceNode: AVAudioSourceNode?
+    private var effects = [AVAudioUnit?](
+        repeating: nil,
+        count: MPX68KAudioEffectSettings.slotCount
+    )
+    private var descriptors = [MPX68KAudioUnitDescriptor?](
+        repeating: nil,
+        count: MPX68KAudioEffectSettings.slotCount
+    )
+    private var midiSchedulers = [AUScheduleMIDIEventBlock?](
+        repeating: nil,
+        count: MPX68KAudioEffectSettings.slotCount
+    )
+    private var legacyAudioUnits = [AudioUnit?](
+        repeating: nil,
+        count: MPX68KAudioEffectSettings.slotCount
+    )
+    private var pendingMIDIEvents: [PendingMIDIEvent] = []
+    private let midiLock = NSLock()
+    private var currentSettings = MPX68KAudioEffectSettings()
+    private var loadGeneration: UInt = 0
+    private var shouldRun = false
+    private(set) var isRunning = false
+    private(set) var isReady = false
+    private(set) var sampleRate: Double = 48_000.0
+    private var configuredDevice: AudioDeviceID?
+    private var previousDeviceBufferFrames: UInt32?
+    private var bufferFrames = 64
+    private var isClosed = false
+
+    deinit {
+        close()
+    }
+
+    static func availableAudioEffects() -> [MPX68KAudioUnitDescriptor] {
+        let manager = AVAudioUnitComponentManager.shared()
+        let componentTypes: [UInt32] = [
+            kAudioUnitType_Effect,
+            kAudioUnitType_MusicEffect
+        ]
+        var descriptorsByID: [String: MPX68KAudioUnitDescriptor] = [:]
+
+        for componentType in componentTypes {
+            let description = AudioComponentDescription(
+                componentType: componentType,
+                componentSubType: 0,
+                componentManufacturer: 0,
+                componentFlags: 0,
+                componentFlagsMask: 0
+            )
+            for component in manager.components(matching: description) {
+                let componentDescription = component.audioComponentDescription
+                let manufacturer = component.manufacturerName.isEmpty
+                    ? ""
+                    : " (\(component.manufacturerName))"
+                let descriptor = MPX68KAudioUnitDescriptor(
+                    componentType: componentDescription.componentType,
+                    componentSubType: componentDescription.componentSubType,
+                    componentManufacturer: componentDescription.componentManufacturer,
+                    componentFlags: componentDescription.componentFlags,
+                    componentFlagsMask: componentDescription.componentFlagsMask,
+                    name: "\(component.name)\(manufacturer)"
+                )
+                descriptorsByID[descriptor.id] = descriptor
+            }
+        }
+
+        return descriptorsByID.values.sorted {
+            $0.name.localizedStandardCompare($1.name) == .orderedAscending
+        }
+    }
+
+    func apply(
+        _ settings: MPX68KAudioEffectSettings,
+        preferredSampleRate: Double,
+        bufferFrames: Int,
+        completion: @escaping (String?) -> Void
+    ) {
+        guard !isClosed else {
+            completion("Audio effect host is closed")
+            return
+        }
+
+        let normalizedSettings = MPX68KAudioEffectSettings(
+            componentIDs: settings.componentIDs
+        )
+        if isReady, normalizedSettings == currentSettings {
+            completion(applyBufferFrames(bufferFrames))
+            return
+        }
+        let availableEffects = Dictionary(
+            uniqueKeysWithValues: Self.availableAudioEffects().map { ($0.id, $0) }
+        )
+        var requestedEffects: [(slot: Int, descriptor: MPX68KAudioUnitDescriptor)] = []
+        for (slot, componentID) in normalizedSettings.componentIDs.enumerated() {
+            guard let componentID else { continue }
+            guard let descriptor = availableEffects[componentID] else {
+                completion("Audio Unit effect is no longer available: \(componentID)")
+                return
+            }
+            requestedEffects.append((slot: slot, descriptor: descriptor))
+        }
+
+        saveStates()
+        loadGeneration &+= 1
+        let generation = loadGeneration
+        self.bufferFrames = bufferFrames
+
+        Self.loadQueue.async { [weak self] in
+            Self.loadEffects(
+                requestedEffects,
+                index: 0,
+                loaded: []
+            ) { [weak self] loaded, error in
+                guard let self = self else {
+                    completion(nil)
+                    return
+                }
+                DispatchQueue.main.async {
+                    self.finishApply(
+                        loaded: loaded,
+                        error: error,
+                        settings: normalizedSettings,
+                        preferredSampleRate: preferredSampleRate,
+                        generation: generation,
+                        completion: completion
+                    )
+                }
+            }
+        }
+    }
+
+    func applyBufferFrames(_ frames: Int) -> String? {
+        bufferFrames = frames
+        guard let device = Self.defaultOutputDevice() else {
+            return "No default macOS audio output device is available"
+        }
+        if configuredDevice != device {
+            if let configuredDevice,
+               let previousDeviceBufferFrames = previousDeviceBufferFrames {
+                _ = Self.setDeviceBufferSize(
+                    previousDeviceBufferFrames,
+                    device: configuredDevice
+                )
+            }
+            configuredDevice = device
+            previousDeviceBufferFrames = Self.deviceBufferSize(device)
+        }
+        let status = Self.setDeviceBufferSize(UInt32(frames), device: device)
+        guard status == noErr else {
+            return Self.statusMessage("Cannot set audio device buffer size", status: status)
+        }
+        sampleRate = Self.deviceSampleRate(device) ?? sampleRate
+        X68000_AudioRenderSetHostRate(UInt32(sampleRate.rounded()))
+        return nil
+    }
+
+    func play() -> String? {
+        shouldRun = true
+        guard isReady else { return nil }
+        return startEngine()
+    }
+
+    func pause() {
+        shouldRun = false
+        stopEngine()
+    }
+
+    func stop() {
+        shouldRun = false
+        stopEngine()
+    }
+
+    func close() {
+        guard !isClosed else { return }
+        saveStates()
+        isClosed = true
+        shouldRun = false
+        loadGeneration &+= 1
+        sendPanicToCurrentEffects()
+        stopEngine()
+        detachGraph()
+        restoreDeviceBuffer()
+        pendingMIDIEvents.removeAll(keepingCapacity: false)
+    }
+
+    func saveStates() {
+        guard !isClosed else { return }
+        for slot in 0..<MPX68KAudioEffectSettings.slotCount {
+            guard let unit = effects[slot],
+                  let descriptor = descriptors[slot] else {
+                continue
+            }
+            guard let state = unit.auAudioUnit.fullState else {
+                warningLog(
+                    "Audio Unit effect \(descriptor.name) does not provide a persistable state",
+                    category: .audio
+                )
+                continue
+            }
+
+            do {
+                let data = try PropertyListSerialization.data(
+                    fromPropertyList: state,
+                    format: .binary,
+                    options: 0
+                )
+                UserDefaults.standard.set(
+                    data,
+                    forKey: Self.stateDefaultsKey(slot: slot, descriptor: descriptor)
+                )
+                debugLog(
+                    "Saved Audio Unit effect state: slot \(slot + 1), \(descriptor.name)",
+                    category: .audio
+                )
+            } catch {
+                warningLog(
+                    "Cannot serialize Audio Unit effect state for \(descriptor.name): "
+                        + error.localizedDescription,
+                    category: .audio
+                )
+            }
+        }
+    }
+
+    func sendMIDI(_ event: [UInt8], hostTime: UInt64) {
+        guard !event.isEmpty else { return }
+
+        midiLock.lock()
+        defer { midiLock.unlock() }
+        let hasMIDIEffect = midiSchedulers.contains { $0 != nil }
+            || legacyAudioUnits.contains { $0 != nil }
+        guard hasMIDIEffect else { return }
+
+        if !engine.isRunning || engine.outputNode.lastRenderTime == nil {
+            if pendingMIDIEvents.count >= Self.maximumPendingMIDIEvents {
+                pendingMIDIEvents.removeFirst()
+            }
+            pendingMIDIEvents.append(PendingMIDIEvent(data: event, hostTime: hostTime))
+            return
+        }
+
+        sendMIDIImmediately(event, hostTime: hostTime)
+        flushPendingMIDIImmediately()
+    }
+
+    func showEditor(
+        slot: Int,
+        completion: @escaping (Result<NSViewController, Error>) -> Void
+    ) {
+        guard slot >= 0,
+              slot < MPX68KAudioEffectSettings.slotCount,
+              let unit = effects[slot] else {
+            completion(.failure(Self.hostError("No Audio Unit effect is loaded in this slot")))
+            return
+        }
+
+        unit.auAudioUnit.requestViewController { viewController in
+            DispatchQueue.main.async {
+                guard let viewController else {
+                    completion(.failure(Self.hostError(
+                        "This Audio Unit effect does not provide a custom UI"
+                    )))
+                    return
+                }
+                completion(.success(viewController))
+            }
+        }
+    }
+
+    private func finishApply(
+        loaded: [EffectInstance]?,
+        error: Error?,
+        settings: MPX68KAudioEffectSettings,
+        preferredSampleRate: Double,
+        generation: UInt,
+        completion: @escaping (String?) -> Void
+    ) {
+        guard !isClosed, loadGeneration == generation else {
+            completion(nil)
+            return
+        }
+        if let error {
+            errorLog(
+                "Cannot load Audio Unit effect chain: \(error.localizedDescription)",
+                category: .audio
+            )
+            completion("Cannot load Audio Unit effect: \(error.localizedDescription)")
+            return
+        }
+        guard let loaded else {
+            completion("Audio Unit effect returned no instances")
+            return
+        }
+
+        if let error = install(
+            loaded: loaded,
+            settings: settings,
+            preferredSampleRate: preferredSampleRate,
+            bufferFrames: self.bufferFrames
+        ) {
+            completion(error)
+            return
+        }
+        completion(nil)
+    }
+
+    private func install(
+        loaded: [EffectInstance],
+        settings: MPX68KAudioEffectSettings,
+        preferredSampleRate: Double,
+        bufferFrames: Int
+    ) -> String? {
+        guard let device = Self.defaultOutputDevice() else {
+            return "No default macOS audio output device is available"
+        }
+
+        if configuredDevice != device {
+            if let configuredDevice,
+               let previousDeviceBufferFrames = previousDeviceBufferFrames {
+                _ = Self.setDeviceBufferSize(
+                    previousDeviceBufferFrames,
+                    device: configuredDevice
+                )
+            }
+            configuredDevice = device
+            previousDeviceBufferFrames = Self.deviceBufferSize(device)
+        }
+        let bufferStatus = Self.setDeviceBufferSize(UInt32(bufferFrames), device: device)
+        guard bufferStatus == noErr else {
+            return Self.statusMessage("Cannot set audio device buffer size", status: bufferStatus)
+        }
+
+        let deviceRate = Self.deviceSampleRate(device) ?? preferredSampleRate
+        guard deviceRate >= 8_000.0, deviceRate <= 192_000.0 else {
+            return "The audio output device reported an invalid sample rate"
+        }
+        guard let format = AVAudioFormat(
+            commonFormat: .pcmFormatFloat32,
+            sampleRate: deviceRate,
+            channels: 2,
+            interleaved: true
+        ) else {
+            return "Cannot create the built-in effect audio format"
+        }
+
+        stopEngine()
+        sendPanicToCurrentEffects()
+        detachGraph()
+
+        let source = AVAudioSourceNode(format: format) { _, _, frameCount, audioBufferList in
+            Self.renderBuiltInAudio(
+                frameCount: frameCount,
+                audioBufferList: audioBufferList
+            )
+        }
+        engine.attach(source)
+
+        var previousNode: AVAudioNode = source
+        for instance in loaded.sorted(by: { $0.slot < $1.slot }) {
+            engine.attach(instance.unit)
+            engine.connect(previousNode, to: instance.unit, format: format)
+            previousNode = instance.unit
+        }
+        engine.connect(previousNode, to: engine.mainMixerNode, format: format)
+
+        self.sourceNode = source
+        self.effects = [AVAudioUnit?](
+            repeating: nil,
+            count: MPX68KAudioEffectSettings.slotCount
+        )
+        self.descriptors = [MPX68KAudioUnitDescriptor?](
+            repeating: nil,
+            count: MPX68KAudioEffectSettings.slotCount
+        )
+        midiLock.lock()
+        midiSchedulers = [AUScheduleMIDIEventBlock?](
+            repeating: nil,
+            count: MPX68KAudioEffectSettings.slotCount
+        )
+        legacyAudioUnits = [AudioUnit?](
+            repeating: nil,
+            count: MPX68KAudioEffectSettings.slotCount
+        )
+        midiLock.unlock()
+
+        for instance in loaded {
+            effects[instance.slot] = instance.unit
+            descriptors[instance.slot] = instance.descriptor
+            restoreSavedState(for: instance.slot,
+                              descriptor: instance.descriptor,
+                              in: instance.unit)
+            bindMIDIIfNeeded(
+                slot: instance.slot,
+                descriptor: instance.descriptor,
+                unit: instance.unit
+            )
+        }
+
+        currentSettings = settings
+        sampleRate = deviceRate
+        self.bufferFrames = bufferFrames
+        X68000_AudioRenderSetHostRate(UInt32(deviceRate.rounded()))
+        isReady = true
+
+        if shouldRun, let error = startEngine() {
+            isReady = false
+            detachGraph()
+            return error
+        }
+        return nil
+    }
+
+    private func bindMIDIIfNeeded(
+        slot: Int,
+        descriptor: MPX68KAudioUnitDescriptor,
+        unit: AVAudioUnit
+    ) {
+        guard descriptor.componentType == kAudioUnitType_MusicEffect else {
+            return
+        }
+
+        var scheduler = unit.auAudioUnit.scheduleMIDIEventBlock
+        var legacyAudioUnit: AudioUnit? = scheduler == nil ? unit.audioUnit : nil
+        if scheduler == nil, legacyAudioUnit == nil {
+            do {
+                try unit.auAudioUnit.allocateRenderResources()
+                scheduler = unit.auAudioUnit.scheduleMIDIEventBlock
+                legacyAudioUnit = scheduler == nil ? unit.audioUnit : nil
+            } catch {
+                warningLog(
+                    "Audio Unit MusicEffect resource allocation: \(error.localizedDescription)",
+                    category: .audio
+                )
+            }
+        }
+        midiLock.lock()
+        midiSchedulers[slot] = scheduler
+        legacyAudioUnits[slot] = legacyAudioUnit
+        midiLock.unlock()
+
+        if scheduler == nil, legacyAudioUnit == nil {
+            warningLog(
+                "Audio Unit MusicEffect does not expose a MIDI input: \(descriptor.name)",
+                category: .audio
+            )
+        }
+    }
+
+    private func restoreSavedState(
+        for slot: Int,
+        descriptor: MPX68KAudioUnitDescriptor,
+        in unit: AVAudioUnit
+    ) {
+        guard let data = UserDefaults.standard.data(
+            forKey: Self.stateDefaultsKey(slot: slot, descriptor: descriptor)
+        ) else {
+            return
+        }
+
+        do {
+            var format = PropertyListSerialization.PropertyListFormat.binary
+            guard let state = try PropertyListSerialization.propertyList(
+                from: data,
+                options: [],
+                format: &format
+            ) as? [String: Any] else {
+                warningLog(
+                    "Saved Audio Unit effect state has an invalid format: \(descriptor.name)",
+                    category: .audio
+                )
+                return
+            }
+
+            unit.auAudioUnit.fullState = state
+            guard unit.auAudioUnit.fullState != nil else {
+                warningLog(
+                    "Audio Unit rejected its saved effect state: \(descriptor.name)",
+                    category: .audio
+                )
+                return
+            }
+            notifyParameterListeners(for: unit)
+            debugLog(
+                "Restored Audio Unit effect state: slot \(slot + 1), \(descriptor.name)",
+                category: .audio
+            )
+        } catch {
+            warningLog(
+                "Cannot deserialize Audio Unit effect state for \(descriptor.name): "
+                    + error.localizedDescription,
+                category: .audio
+            )
+        }
+    }
+
+    private func notifyParameterListeners(for unit: AVAudioUnit) {
+        let underlyingAudioUnit: AudioUnit? = unit.audioUnit
+        guard let underlyingAudioUnit else { return }
+
+        var changedUnit = AudioUnitParameter(
+            mAudioUnit: underlyingAudioUnit,
+            mParameterID: kAUParameterListener_AnyParameter,
+            mScope: kAudioUnitScope_Global,
+            mElement: 0
+        )
+        _ = AUParameterListenerNotify(nil, nil, &changedUnit)
+    }
+
+    private func startEngine() -> String? {
+        guard isReady else { return nil }
+        guard !engine.isRunning else {
+            isRunning = true
+            return nil
+        }
+
+        engine.prepare()
+        do {
+            try engine.start()
+            isRunning = true
+            midiLock.lock()
+            flushPendingMIDIImmediately()
+            midiLock.unlock()
+            return nil
+        } catch {
+            isRunning = false
+            return "Cannot start Audio Unit effect engine: \(error.localizedDescription)"
+        }
+    }
+
+    private func stopEngine() {
+        if engine.isRunning {
+            engine.stop()
+        }
+        isRunning = false
+    }
+
+    private func detachGraph() {
+        if let sourceNode {
+            engine.disconnectNodeOutput(sourceNode)
+            engine.detach(sourceNode)
+        }
+        for effect in effects.compactMap({ $0 }) {
+            engine.disconnectNodeInput(effect)
+            engine.disconnectNodeOutput(effect)
+            engine.detach(effect)
+        }
+        sourceNode = nil
+        effects = [AVAudioUnit?](
+            repeating: nil,
+            count: MPX68KAudioEffectSettings.slotCount
+        )
+        descriptors = [MPX68KAudioUnitDescriptor?](
+            repeating: nil,
+            count: MPX68KAudioEffectSettings.slotCount
+        )
+        midiLock.lock()
+        midiSchedulers = [AUScheduleMIDIEventBlock?](
+            repeating: nil,
+            count: MPX68KAudioEffectSettings.slotCount
+        )
+        legacyAudioUnits = [AudioUnit?](
+            repeating: nil,
+            count: MPX68KAudioEffectSettings.slotCount
+        )
+        midiLock.unlock()
+        isReady = false
+        isRunning = false
+    }
+
+    private func sendPanicToCurrentEffects() {
+        midiLock.lock()
+        defer { midiLock.unlock() }
+        guard midiSchedulers.contains(where: { $0 != nil })
+                || legacyAudioUnits.contains(where: { $0 != nil }) else {
+            return
+        }
+        for channel in 0..<16 {
+            let status = 0xB0 | UInt8(channel)
+            sendMIDIImmediately([status, 123, 0], hostTime: 0)
+            sendMIDIImmediately([status, 120, 0], hostTime: 0)
+        }
+        pendingMIDIEvents.removeAll(keepingCapacity: true)
+    }
+
+    private func sendMIDIImmediately(_ event: [UInt8], hostTime: UInt64) {
+        for scheduler in midiSchedulers.compactMap({ $0 }) {
+            scheduleMIDI(event, atHostTime: hostTime, using: scheduler)
+        }
+        for audioUnit in legacyAudioUnits.compactMap({ $0 }) {
+            sendLegacyMIDI(event, atHostTime: hostTime, using: audioUnit)
+        }
+    }
+
+    private func flushPendingMIDIImmediately() {
+        guard !pendingMIDIEvents.isEmpty,
+              engine.isRunning,
+              engine.outputNode.lastRenderTime != nil else {
+            return
+        }
+        let pending = pendingMIDIEvents
+        pendingMIDIEvents.removeAll(keepingCapacity: true)
+        for event in pending {
+            sendMIDIImmediately(event.data, hostTime: event.hostTime)
+        }
+    }
+
+    private func scheduleMIDI(
+        _ event: [UInt8],
+        atHostTime hostTime: UInt64,
+        using scheduler: AUScheduleMIDIEventBlock
+    ) {
+        let eventSampleTime = sampleTime(forHostTime: hostTime)
+        event.withUnsafeBufferPointer { buffer in
+            guard let baseAddress = buffer.baseAddress else { return }
+            scheduler(eventSampleTime, 0, event.count, baseAddress)
+        }
+    }
+
+    private func sendLegacyMIDI(
+        _ event: [UInt8],
+        atHostTime hostTime: UInt64,
+        using audioUnit: AudioUnit
+    ) {
+        guard let status = event.first else { return }
+        let data1 = event.count > 1 ? event[1] : 0
+        let data2 = event.count > 2 ? event[2] : 0
+        _ = MusicDeviceMIDIEvent(
+            audioUnit,
+            UInt32(status),
+            UInt32(data1),
+            UInt32(data2),
+            sampleOffset(forHostTime: hostTime)
+        )
+    }
+
+    private func sampleOffset(forHostTime hostTime: UInt64) -> UInt32 {
+        guard let renderTime = engine.outputNode.lastRenderTime,
+              renderTime.isHostTimeValid,
+              renderTime.isSampleTimeValid,
+              renderTime.sampleRate > 0.0 else {
+            return 0
+        }
+
+        let hostClockFrequency = AudioGetHostClockFrequency()
+        guard hostClockFrequency > 0.0 else { return 0 }
+        let deltaTicks: Double
+        if hostTime >= renderTime.hostTime {
+            deltaTicks = Double(hostTime - renderTime.hostTime)
+        } else {
+            deltaTicks = -Double(renderTime.hostTime - hostTime)
+        }
+        let deltaFrames = deltaTicks / hostClockFrequency * renderTime.sampleRate
+        guard deltaFrames > 0.0 else { return 0 }
+        return UInt32(min(deltaFrames.rounded(), Double(UInt32.max)))
+    }
+
+    private func sampleTime(forHostTime hostTime: UInt64) -> AUEventSampleTime {
+        guard let renderTime = engine.outputNode.lastRenderTime,
+              renderTime.isHostTimeValid,
+              renderTime.isSampleTimeValid,
+              renderTime.sampleRate > 0.0 else {
+            return AUEventSampleTimeImmediate
+        }
+
+        let hostClockFrequency = AudioGetHostClockFrequency()
+        guard hostClockFrequency > 0.0 else {
+            return AUEventSampleTimeImmediate
+        }
+        let deltaTicks: Double
+        if hostTime >= renderTime.hostTime {
+            deltaTicks = Double(hostTime - renderTime.hostTime)
+        } else {
+            deltaTicks = -Double(renderTime.hostTime - hostTime)
+        }
+        let deltaFrames = AVAudioFramePosition(
+            (deltaTicks / hostClockFrequency * renderTime.sampleRate).rounded()
+        )
+        let targetSampleTime = renderTime.sampleTime + deltaFrames
+        guard targetSampleTime > renderTime.sampleTime else {
+            return AUEventSampleTimeImmediate
+        }
+        return AUEventSampleTime(targetSampleTime)
+    }
+
+    private static func loadEffects(
+        _ requested: [(slot: Int, descriptor: MPX68KAudioUnitDescriptor)],
+        index: Int,
+        loaded: [EffectInstance],
+        completion: @escaping ([EffectInstance]?, Error?) -> Void
+    ) {
+        guard index < requested.count else {
+            completion(loaded, nil)
+            return
+        }
+        let request = requested[index]
+        let description = AudioComponentDescription(
+            componentType: request.descriptor.componentType,
+            componentSubType: request.descriptor.componentSubType,
+            componentManufacturer: request.descriptor.componentManufacturer,
+            componentFlags: 0,
+            componentFlagsMask: 0
+        )
+        instantiateEffect(description: description) { unit, error in
+            guard let unit else {
+                completion(nil, error ?? Self.hostError(
+                    "Audio Unit effect returned no instance: \(request.descriptor.name)"
+                ))
+                return
+            }
+            let next = loaded + [EffectInstance(
+                slot: request.slot,
+                descriptor: request.descriptor,
+                unit: unit
+            )]
+            Self.loadEffects(
+                requested,
+                index: index + 1,
+                loaded: next,
+                completion: completion
+            )
+        }
+    }
+
+    private static func instantiateEffect(
+        description: AudioComponentDescription,
+        completion: @escaping (AVAudioUnit?, Error?) -> Void
+    ) {
+        AVAudioUnit.instantiate(
+            with: description,
+            options: .loadOutOfProcess
+        ) { unit, error in
+            if unit != nil {
+                completion(unit, nil)
+                return
+            }
+            AVAudioUnit.instantiate(with: description, options: []) { fallbackUnit, fallbackError in
+                completion(fallbackUnit, fallbackError ?? error)
+            }
+        }
+    }
+
+    private static func renderBuiltInAudio(
+        frameCount: AVAudioFrameCount,
+        audioBufferList: UnsafeMutablePointer<AudioBufferList>
+    ) -> OSStatus {
+        let buffers = UnsafeMutableAudioBufferListPointer(audioBufferList)
+        guard !buffers.isEmpty else { return noErr }
+
+        let requiredInterleavedBytes = Int(frameCount)
+            * 2
+            * MemoryLayout<Float>.size
+        if buffers.count == 1,
+           buffers[0].mNumberChannels >= 2,
+           Int(buffers[0].mDataByteSize) >= requiredInterleavedBytes,
+           let audioData = buffers[0].mData {
+            let samples = audioData.assumingMemoryBound(to: Float.self)
+            X68000_AudioRenderConsumeInterleavedFloat32(samples, frameCount)
+            X68000_AudioRenderCaptureFloat32(samples, frameCount)
+            return noErr
+        }
+
+        guard buffers.count >= 2,
+              let leftData = buffers[0].mData,
+              let rightData = buffers[1].mData else {
+            for index in 0..<buffers.count {
+                if let audioData = buffers[index].mData {
+                    memset(audioData, 0, Int(buffers[index].mDataByteSize))
+                }
+            }
+            return noErr
+        }
+        X68000_AudioRenderConsumeFloat32(
+            leftData.assumingMemoryBound(to: Float.self),
+            rightData.assumingMemoryBound(to: Float.self),
+            frameCount
+        )
+        return noErr
+    }
+
+    private func restoreDeviceBuffer() {
+        if let device = configuredDevice,
+           let previousDeviceBufferFrames = previousDeviceBufferFrames {
+            _ = Self.setDeviceBufferSize(previousDeviceBufferFrames, device: device)
+        }
+        configuredDevice = nil
+        previousDeviceBufferFrames = nil
+    }
+
+    private static func defaultOutputDevice() -> AudioDeviceID? {
+        MPX68KDirectAudioUnitOutput.defaultOutputDevice()
+    }
+
+    private static func deviceSampleRate(_ device: AudioDeviceID) -> Double? {
+        MPX68KDirectAudioUnitOutput.deviceSampleRate(device)
+    }
+
+    private static func deviceBufferSize(_ device: AudioDeviceID) -> UInt32? {
+        MPX68KDirectAudioUnitOutput.deviceBufferSize(device)
+    }
+
+    private static func setDeviceBufferSize(
+        _ frames: UInt32,
+        device: AudioDeviceID
+    ) -> OSStatus {
+        MPX68KDirectAudioUnitOutput.setDeviceBufferSize(frames, device: device)
+    }
+
+    private static func stateDefaultsKey(
+        slot: Int,
+        descriptor: MPX68KAudioUnitDescriptor
+    ) -> String {
+        "\(stateDefaultsPrefix)slot\(slot).\(descriptor.id)"
+    }
+
+    private static func statusMessage(_ action: String, status: OSStatus) -> String {
+        "\(action) (status \(status))"
+    }
+
+    private static func hostError(_ message: String) -> NSError {
+        NSError(
+            domain: "MPX68K.AudioEffectHost",
+            code: 1,
+            userInfo: [NSLocalizedDescriptionKey: message]
+        )
     }
 }
 
