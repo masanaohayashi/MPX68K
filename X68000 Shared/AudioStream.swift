@@ -1390,6 +1390,17 @@ private final class MPX68KAudioUnitHost {
                                 atHostTime hostTime: UInt64,
                                 using audioUnit: AudioUnit) {
         guard let status = event.first else { return }
+        if status == 0xF0 {
+            event.withUnsafeBufferPointer { buffer in
+                guard let baseAddress = buffer.baseAddress else { return }
+                _ = MusicDeviceSysEx(
+                    audioUnit,
+                    baseAddress,
+                    UInt32(buffer.count)
+                )
+            }
+            return
+        }
         let data1 = event.count > 1 ? event[1] : 0
         let data2 = event.count > 2 ? event[2] : 0
         let offset = sampleOffset(forHostTime: hostTime)
@@ -1728,6 +1739,11 @@ private final class MPX68KAudioUnitHost {
 
 private final class MPX68KAudioEffectHost {
     private static let stateDefaultsPrefix = "MPX68K.AudioEffectState."
+    // AVAudioEngine can render a node in its own 512-frame quantum even when
+    // the hardware buffer is configured to 16 or 64 frames. Every AU in the
+    // chain must therefore advertise the engine quantum before it is
+    // connected to the graph.
+    private static let engineMaximumFramesPerSlice: UInt32 = 512
     private static let loadQueue = DispatchQueue(
         label: "MPX68K.AudioEffectHost.load",
         qos: .userInitiated
@@ -1980,7 +1996,16 @@ private final class MPX68KAudioEffectHost {
             || legacyAudioUnits.contains { $0 != nil }
         guard hasMIDIEffect else { return }
 
-        if !engine.isRunning || engine.outputNode.lastRenderTime == nil {
+        if engine.isRunning, engine.outputNode.lastRenderTime != nil {
+            // Keep events queued before the engine became renderable ahead of
+            // the newly arrived event. Otherwise the first live event could
+            // overtake a queued Note Off or parameter change.
+            flushPendingMIDIImmediately()
+        }
+
+        if !pendingMIDIEvents.isEmpty
+                || !engine.isRunning
+                || engine.outputNode.lastRenderTime == nil {
             if pendingMIDIEvents.count >= Self.maximumPendingMIDIEvents {
                 pendingMIDIEvents.removeFirst()
             }
@@ -1989,7 +2014,6 @@ private final class MPX68KAudioEffectHost {
         }
 
         sendMIDIImmediately(event, hostTime: hostTime)
-        flushPendingMIDIImmediately()
     }
 
     func showEditor(
@@ -2087,14 +2111,36 @@ private final class MPX68KAudioEffectHost {
             commonFormat: .pcmFormatFloat32,
             sampleRate: deviceRate,
             channels: 2,
-            interleaved: true
+            // Most AUv2 effects, including the Waves effects installed on
+            // the development machine, expose deinterleaved Float32 buses.
+            // Keep the source in that canonical AU format and let the engine
+            // negotiate each subsequent connection.
+            interleaved: false
         ) else {
             return "Cannot create the built-in effect audio format"
         }
 
+        let maximumFramesPerSlice = max(
+            Self.engineMaximumFramesPerSlice,
+            UInt32(max(1, bufferFrames))
+        )
+
         stopEngine()
         sendPanicToCurrentEffects()
         detachGraph()
+
+        // The output node is also driven by AVAudioEngine's internal render
+        // quantum. A 16-frame HAL setting must not make that node advertise a
+        // 16-frame limit when the graph is started with a 512-frame slice.
+        engine.outputNode.auAudioUnit.maximumFramesToRender = maximumFramesPerSlice
+        let outputAudioUnit: AudioUnit? = engine.outputNode.audioUnit
+        if let outputAudioUnit,
+           let error = setMaximumFramesPerSlice(
+               on: outputAudioUnit,
+               frames: maximumFramesPerSlice
+           ) {
+            return error
+        }
 
         let source = AVAudioSourceNode(format: format) { _, _, frameCount, audioBufferList in
             Self.renderBuiltInAudio(
@@ -2107,10 +2153,23 @@ private final class MPX68KAudioEffectHost {
         var previousNode: AVAudioNode = source
         for instance in loaded.sorted(by: { $0.slot < $1.slot }) {
             engine.attach(instance.unit)
-            engine.connect(previousNode, to: instance.unit, format: format)
+            // AVAudioEngine may reset an AUv2's slice size when it is
+            // attached. Reapply it after attach and immediately before the
+            // first connection, otherwise a 16-frame device setting can make
+            // the engine reject its internal 512-frame render quantum.
+            if let error = configureMaximumFramesPerSlice(
+                for: instance.unit,
+                frames: maximumFramesPerSlice
+            ) {
+                return error
+            }
+            // Let AVAudioEngine negotiate the AU's native bus format. Forcing
+            // the source's interleaved format onto every AU can make a valid
+            // effect reject setFormat during connect.
+            engine.connect(previousNode, to: instance.unit, format: nil)
             previousNode = instance.unit
         }
-        engine.connect(previousNode, to: engine.mainMixerNode, format: format)
+        engine.connect(previousNode, to: engine.mainMixerNode, format: nil)
 
         self.sourceNode = source
         self.effects = [AVAudioUnit?](
@@ -2155,6 +2214,38 @@ private final class MPX68KAudioEffectHost {
             isReady = false
             detachGraph()
             return error
+        }
+        return nil
+    }
+
+    private func configureMaximumFramesPerSlice(
+        for unit: AVAudioUnit,
+        frames: UInt32
+    ) -> String? {
+        unit.auAudioUnit.maximumFramesToRender = frames
+        let audioUnit: AudioUnit? = unit.audioUnit
+        guard let audioUnit else { return nil }
+        return setMaximumFramesPerSlice(on: audioUnit, frames: frames)
+    }
+
+    private func setMaximumFramesPerSlice(
+        on audioUnit: AudioUnit,
+        frames: UInt32
+    ) -> String? {
+        var requestedMaximumFrames = frames
+        let status = AudioUnitSetProperty(
+            audioUnit,
+            kAudioUnitProperty_MaximumFramesPerSlice,
+            kAudioUnitScope_Global,
+            0,
+            &requestedMaximumFrames,
+            UInt32(MemoryLayout<UInt32>.size)
+        )
+        guard status == noErr else {
+            return Self.statusMessage(
+                "Cannot configure Audio Unit effect maximum frames per slice",
+                status: status
+            )
         }
         return nil
     }
@@ -2371,6 +2462,17 @@ private final class MPX68KAudioEffectHost {
         using audioUnit: AudioUnit
     ) {
         guard let status = event.first else { return }
+        if status == 0xF0 {
+            event.withUnsafeBufferPointer { buffer in
+                guard let baseAddress = buffer.baseAddress else { return }
+                _ = MusicDeviceSysEx(
+                    audioUnit,
+                    baseAddress,
+                    UInt32(buffer.count)
+                )
+            }
+            return
+        }
         let data1 = event.count > 1 ? event[1] : 0
         let data2 = event.count > 2 ? event[2] : 0
         _ = MusicDeviceMIDIEvent(
