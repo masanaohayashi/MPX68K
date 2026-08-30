@@ -225,7 +225,7 @@
 		07F863A2242F93E800CBB224 /* Actions.sks */ = {isa = PBXFileReference; lastKnownFileType = file.sks; path = Actions.sks; sourceTree = "<group>"; };
 		07F863A4242F93E800CBB224 /* GameScene.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = GameScene.swift; sourceTree = "<group>"; };
 		07F863A5242F93EA00CBB224 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
-		07F863BC242F93EA00CBB224 /* X68000.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = X68000.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		07F863BC242F93EA00CBB224 /* MPX68K.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MPX68K.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		07F863C3242F93EA00CBB224 /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/Main.storyboard; sourceTree = "<group>"; };
 		07F863C5242F93EA00CBB224 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		07F86403242F94BB00CBB224 /* dosio.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = dosio.c; sourceTree = "<group>"; };
@@ -377,7 +377,7 @@
 			isa = PBXGroup;
 			children = (
 				07F863AA242F93EA00CBB224 /* X68000 for iOS.app */,
-				07F863BC242F93EA00CBB224 /* X68000.app */,
+				07F863BC242F93EA00CBB224 /* MPX68K.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -629,7 +629,7 @@
 				53A861222E4376CB0056E4DE /* _CryptoExtras */,
 			);
 			productName = "X68000 macOS";
-			productReference = 07F863BC242F93EA00CBB224 /* X68000.app */;
+			productReference = 07F863BC242F93EA00CBB224 /* MPX68K.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -1060,7 +1060,7 @@
 				CODE_SIGN_ENTITLEMENTS = "X68000 iOS/X68000 for iOSDebug.entitlements";
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 936;
+				CURRENT_PROJECT_VERSION = 937;
 				DEVELOPMENT_TEAM = P5G28RMWUN;
 				GCC_PREPROCESSOR_DEFINITIONS = (
 					"DEBUG=1",
@@ -1107,7 +1107,7 @@
 				CODE_SIGN_ENTITLEMENTS = "X68000 iOS/X68000 for iOS.entitlements";
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 936;
+				CURRENT_PROJECT_VERSION = 937;
 				DEVELOPMENT_TEAM = P5G28RMWUN;
 				GCC_PREPROCESSOR_DEFINITIONS = (
 					HAVE_C68K,
@@ -1154,8 +1154,9 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 935;
+				CURRENT_PROJECT_VERSION = 937;
 				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = P5G28RMWUN;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_FILE_ACCESS_DOWNLOADS_FOLDER = readwrite;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -1209,9 +1210,9 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 935;
+				CURRENT_PROJECT_VERSION = 937;
 				DEAD_CODE_STRIPPING = YES;
-				DEVELOPMENT_TEAM = DQR9HH7KUY;
+				DEVELOPMENT_TEAM = P5G28RMWUN;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_FILE_ACCESS_DOWNLOADS_FOLDER = readwrite;
 				ENABLE_HARDENED_RUNTIME = YES;
