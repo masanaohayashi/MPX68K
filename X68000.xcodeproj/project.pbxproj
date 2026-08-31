@@ -57,9 +57,16 @@
 		07F4C7542430667D002CF5CA /* ioc.c in Sources */ = {isa = PBXBuildFile; fileRef = 07F4C71F2430667D002CF5CA /* ioc.c */; };
 		07F4C7562430667D002CF5CA /* disk_xdf.c in Sources */ = {isa = PBXBuildFile; fileRef = 07F4C7202430667D002CF5CA /* disk_xdf.c */; };
 		07F4C7592430A73C002CF5CA /* AudioStream.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07F4C7572430A73C002CF5CA /* AudioStream.swift */; };
+		07F863AE242F93EA00CBB224 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07F863AD242F93EA00CBB224 /* AppDelegate.swift */; };
+		07F863B0242F93EA00CBB224 /* GameViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07F863AF242F93EA00CBB224 /* GameViewController.swift */; };
+		07F863B3242F93EA00CBB224 /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 07F863B1242F93EA00CBB224 /* Main.storyboard */; };
+		07F863B6242F93EA00CBB224 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 07F863B4242F93EA00CBB224 /* LaunchScreen.storyboard */; };
 		07F863C4242F93EA00CBB224 /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 07F863C2242F93EA00CBB224 /* Main.storyboard */; };
+		07F863C6242F93EA00CBB224 /* Actions.sks in Resources */ = {isa = PBXBuildFile; fileRef = 07F863A2242F93E800CBB224 /* Actions.sks */; };
 		07F863C7242F93EA00CBB224 /* Actions.sks in Resources */ = {isa = PBXBuildFile; fileRef = 07F863A2242F93E800CBB224 /* Actions.sks */; };
+		07F863CA242F93EA00CBB224 /* GameScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07F863A4242F93E800CBB224 /* GameScene.swift */; };
 		07F863CB242F93EA00CBB224 /* GameScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07F863A4242F93E800CBB224 /* GameScene.swift */; };
+		07F863CC242F93EA00CBB224 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 07F863A5242F93EA00CBB224 /* Assets.xcassets */; };
 		07F863CD242F93EA00CBB224 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 07F863A5242F93EA00CBB224 /* Assets.xcassets */; };
 		07F8640C242F94BB00CBB224 /* dosio.c in Sources */ = {isa = PBXBuildFile; fileRef = 07F86403242F94BB00CBB224 /* dosio.c */; };
 		07F8640E242F94BB00CBB224 /* peace.c in Sources */ = {isa = PBXBuildFile; fileRef = 07F86404242F94BB00CBB224 /* peace.c */; };
@@ -91,14 +98,80 @@
 		AA000003300000000000AA01 /* MonitorWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000004300000000000AA01 /* MonitorWindowController.swift */; };
 		AC10FEED2508190000000001 /* crtc_timing.c in Sources */ = {isa = PBXBuildFile; fileRef = AC10FEED2508190000000002 /* crtc_timing.c */; };
 		AC10FEED2508190000000004 /* scrbuf.c in Sources */ = {isa = PBXBuildFile; fileRef = AC10FEED2508190000000005 /* scrbuf.c */; };
-		07F863AE242F93EA00CBB224 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07F863AD242F93EA00CBB224 /* AppDelegate.swift */; };
-		07F863B0242F93EA00CBB224 /* GameViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07F863AF242F93EA00CBB224 /* GameViewController.swift */; };
-		07F863B3242F93EA00CBB224 /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 07F863B1242F93EA00CBB224 /* Main.storyboard */; };
-		07F863B6242F93EA00CBB224 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 07F863B4242F93EA00CBB224 /* LaunchScreen.storyboard */; };
-		07F863C6242F93EA00CBB224 /* Actions.sks in Resources */ = {isa = PBXBuildFile; fileRef = 07F863A2242F93E800CBB224 /* Actions.sks */; };
-		07F863C8242F93EA00CBB224 /* GameScene.sks in Resources */ = {isa = PBXBuildFile; fileRef = 073F76E42431F438005B1F18 /* GameScene.sks */; };
-		07F863CA242F93EA00CBB224 /* GameScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07F863A4242F93E800CBB224 /* GameScene.swift */; };
-		07F863CC242F93EA00CBB224 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 07F863A5242F93EA00CBB224 /* Assets.xcassets */; };
+		E69976AA3044F8FA00C90207 /* ioc.c in Sources */ = {isa = PBXBuildFile; fileRef = 07F4C71F2430667D002CF5CA /* ioc.c */; };
+		E69976AB3044F8FA00C90207 /* fake.c in Sources */ = {isa = PBXBuildFile; fileRef = 07F86408242F94BB00CBB224 /* fake.c */; };
+		E69976AC3044F8FA00C90207 /* m68000.c in Sources */ = {isa = PBXBuildFile; fileRef = 07F4C6C6243065F9002CF5CA /* m68000.c */; };
+		E69976AD3044F8FA00C90207 /* joystick.c in Sources */ = {isa = PBXBuildFile; fileRef = 07F86491242F97BC00CBB224 /* joystick.c */; };
+		E69976AE3044F8FA00C90207 /* X68MouseController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07A528BB24389F5300AFD00D /* X68MouseController.swift */; };
+		E69976AF3044F8FA00C90207 /* irqh.c in Sources */ = {isa = PBXBuildFile; fileRef = 07F4C6F32430667A002CF5CA /* irqh.c */; };
+		E69976B03044F8FA00C90207 /* CGROM_DAT.c in Sources */ = {isa = PBXBuildFile; fileRef = 07E6EF312430CCAE0034E485 /* CGROM_DAT.c */; };
+		E69976B13044F8FA00C90207 /* rtc.c in Sources */ = {isa = PBXBuildFile; fileRef = 07F4C71E2430667D002CF5CA /* rtc.c */; };
+		E69976B23044F8FA00C90207 /* X68Logger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53A861182E4375CA0056E4DE /* X68Logger.swift */; };
+		E69976B33044F8FA00C90207 /* X68ErrorHandling.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53A861172E4375CA0056E4DE /* X68ErrorHandling.swift */; };
+		E69976B43044F8FA00C90207 /* X68Security.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53A861192E4375CA0056E4DE /* X68Security.swift */; };
+		E69976B53044F8FA00C90207 /* sram.c in Sources */ = {isa = PBXBuildFile; fileRef = 07F4C70E2430667B002CF5CA /* sram.c */; };
+		E69976B63044F8FA00C90207 /* X68JoyCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0786961C243D9A0D007FCCEA /* X68JoyCard.swift */; };
+		E69976B73044F8FA00C90207 /* prop.c in Sources */ = {isa = PBXBuildFile; fileRef = 07F864AA242F97BD00CBB224 /* prop.c */; };
+		E69976B83044F8FA00C90207 /* scsi.c in Sources */ = {isa = PBXBuildFile; fileRef = 07F4C6F92430667A002CF5CA /* scsi.c */; };
+		E69976B93044F8FA00C90207 /* pia.c in Sources */ = {isa = PBXBuildFile; fileRef = 07F4C7042430667B002CF5CA /* pia.c */; };
+		E69976BA3044F8FA00C90207 /* gvram.c in Sources */ = {isa = PBXBuildFile; fileRef = 07F4C7172430667C002CF5CA /* gvram.c */; };
+		E69976BB3044F8FA00C90207 /* crtc.c in Sources */ = {isa = PBXBuildFile; fileRef = 07F4C6F12430667A002CF5CA /* crtc.c */; };
+		E69976BC3044F8FA00C90207 /* crtc_timing.c in Sources */ = {isa = PBXBuildFile; fileRef = AC10FEED2508190000000002 /* crtc_timing.c */; };
+		E69976BD3044F8FA00C90207 /* X68Device.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07869624243D9A8E007FCCEA /* X68Device.swift */; };
+		E69976BE3044F8FA00C90207 /* sasi.c in Sources */ = {isa = PBXBuildFile; fileRef = 07F4C6ED2430667A002CF5CA /* sasi.c */; };
+		E69976BF3044F8FA00C90207 /* ConfigScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0758DC5D243EFD830097E86C /* ConfigScene.swift */; };
+		E69976C03044F8FA00C90207 /* fdc.c in Sources */ = {isa = PBXBuildFile; fileRef = 07F4C6EA24306679002CF5CA /* fdc.c */; };
+		E69976C13044F8FA00C90207 /* fmg_wrap.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 07F4C6C92430664A002CF5CA /* fmg_wrap.cpp */; };
+		E69976C23044F8FA00C90207 /* mouse.c in Sources */ = {isa = PBXBuildFile; fileRef = 07F864A9242F97BD00CBB224 /* mouse.c */; };
+		E69976C33044F8FA00C90207 /* dmac.c in Sources */ = {isa = PBXBuildFile; fileRef = 07F4C7032430667B002CF5CA /* dmac.c */; };
+		E69976C43044F8FA00C90207 /* disk_d88.c in Sources */ = {isa = PBXBuildFile; fileRef = 07F4C6FA2430667A002CF5CA /* disk_d88.c */; };
+		E69976C53044F8FA00C90207 /* opm.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 07F4C6CB2430664A002CF5CA /* opm.cpp */; };
+		E69976C63044F8FA00C90207 /* FileSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07644219243328C3006E5208 /* FileSystem.swift */; };
+		E69976C73044F8FA00C90207 /* midi.c in Sources */ = {isa = PBXBuildFile; fileRef = 07F4C6EE2430667A002CF5CA /* midi.c */; };
+		E69976C83044F8FA00C90207 /* mfp.c in Sources */ = {isa = PBXBuildFile; fileRef = 07F4C70B2430667B002CF5CA /* mfp.c */; };
+		E69976C93044F8FA00C90207 /* AudioStream.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07F4C7572430A73C002CF5CA /* AudioStream.swift */; };
+		E69976CA3044F8FA00C90207 /* bg.c in Sources */ = {isa = PBXBuildFile; fileRef = 07F4C70D2430667B002CF5CA /* bg.c */; };
+		E69976CB3044F8FA00C90207 /* sysport.c in Sources */ = {isa = PBXBuildFile; fileRef = 07F4C70C2430667B002CF5CA /* sysport.c */; };
+		E69976CC3044F8FA00C90207 /* fmgen.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 07F4C6D62430664B002CF5CA /* fmgen.cpp */; };
+		E69976CD3044F8FA00C90207 /* d68k.c in Sources */ = {isa = PBXBuildFile; fileRef = 07F4C6F52430667A002CF5CA /* d68k.c */; };
+		E69976CE3044F8FA00C90207 /* timer.c in Sources */ = {isa = PBXBuildFile; fileRef = 07F864B7242F97BE00CBB224 /* timer.c */; };
+		E69976CF3044F8FA00C90207 /* dswin.c in Sources */ = {isa = PBXBuildFile; fileRef = 07F864A5242F97BD00CBB224 /* dswin.c */; };
+		E69976D03044F8FA00C90207 /* mem_wrap.c in Sources */ = {isa = PBXBuildFile; fileRef = 07F4C6FB2430667A002CF5CA /* mem_wrap.c */; };
+		E69976D13044F8FA00C90207 /* status.c in Sources */ = {isa = PBXBuildFile; fileRef = 07F864B4242F97BE00CBB224 /* status.c */; };
+		E69976D23044F8FA00C90207 /* disk_dim.c in Sources */ = {isa = PBXBuildFile; fileRef = 07F4C7122430667C002CF5CA /* disk_dim.c */; };
+		E69976D33044F8FA00C90207 /* TAAnalogJoyStick.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0786963C243DBB73007FCCEA /* TAAnalogJoyStick.swift */; };
+		E69976D43044F8FA00C90207 /* fdd.c in Sources */ = {isa = PBXBuildFile; fileRef = 07F4C7072430667B002CF5CA /* fdd.c */; };
+		E69976D53044F8FA00C90207 /* ppi.c in Sources */ = {isa = PBXBuildFile; fileRef = 535D07AF2E685E0300CF5265 /* ppi.c */; };
+		E69976D63044F8FA00C90207 /* MIDIController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07B71D7B243A350500953E25 /* MIDIController.swift */; };
+		E69976D73044F8FA00C90207 /* peace.c in Sources */ = {isa = PBXBuildFile; fileRef = 07F86404242F94BB00CBB224 /* peace.c */; };
+		E69976D83044F8FA00C90207 /* scc.c in Sources */ = {isa = PBXBuildFile; fileRef = 07F4C7102430667C002CF5CA /* scc.c */; };
+		E69976D93044F8FA00C90207 /* BenchMark.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0760DC2924350DDC004CA0CF /* BenchMark.swift */; };
+		E69976DA3044F8FA00C90207 /* dosio.c in Sources */ = {isa = PBXBuildFile; fileRef = 07F86403242F94BB00CBB224 /* dosio.c */; };
+		E69976DB3044F8FA00C90207 /* tvram.c in Sources */ = {isa = PBXBuildFile; fileRef = 07F4C7012430667B002CF5CA /* tvram.c */; };
+		E69976DC3044F8FA00C90207 /* JoyController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0771C5A02431B129002D40F0 /* JoyController.swift */; };
+		E69976DD3044F8FA00C90207 /* fmtimer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 07F4C6CA2430664A002CF5CA /* fmtimer.cpp */; };
+		E69976DE3044F8FA00C90207 /* disk_xdf.c in Sources */ = {isa = PBXBuildFile; fileRef = 07F4C7202430667D002CF5CA /* disk_xdf.c */; };
+		E69976DF3044F8FA00C90207 /* windraw.c in Sources */ = {isa = PBXBuildFile; fileRef = 07F86494242F97BC00CBB224 /* windraw.c */; };
+		E69976E03044F8FA00C90207 /* scrbuf.c in Sources */ = {isa = PBXBuildFile; fileRef = AC10FEED2508190000000005 /* scrbuf.c */; };
+		E69976E13044F8FA00C90207 /* common.c in Sources */ = {isa = PBXBuildFile; fileRef = 07F864B0242F97BD00CBB224 /* common.c */; };
+		E69976E23044F8FA00C90207 /* adpcm.c in Sources */ = {isa = PBXBuildFile; fileRef = 07F4C6F62430667A002CF5CA /* adpcm.c */; };
+		E69976E33044F8FA00C90207 /* palette.c in Sources */ = {isa = PBXBuildFile; fileRef = 07F4C6FC2430667A002CF5CA /* palette.c */; };
+		E69976E43044F8FA00C90207 /* keyboard.c in Sources */ = {isa = PBXBuildFile; fileRef = 07F864A3242F97BD00CBB224 /* keyboard.c */; };
+		E69976E53044F8FA00C90207 /* winx68k.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 07F8649B242F97BC00CBB224 /* winx68k.cpp */; };
+		E69976E63044F8FA00C90207 /* IPLROM_DAT.c in Sources */ = {isa = PBXBuildFile; fileRef = 07E6EF2E2430CC1B0034E485 /* IPLROM_DAT.c */; };
+		E69976E73044F8FA00C90207 /* CRT/CRTSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53C0A0FF2E50000000AAA001 /* CRT/CRTSettings.swift */; };
+		E69976E83044F8FA00C90207 /* CRT/CRTFilterManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53C0A1012E50000000AAA001 /* CRT/CRTFilterManager.swift */; };
+		E69976E93044F8FA00C90207 /* SuperimposeManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53C0A1052E50050000AAA001 /* SuperimposeManager.swift */; };
+		E69976EA3044F8FA00C90207 /* CRT/CRTOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53C0A1032E50010000AAA001 /* CRT/CRTOverlay.swift */; };
+		E69976EB3044F8FA00C90207 /* FDD.png in Resources */ = {isa = PBXBuildFile; fileRef = 0760DC262434F492004CA0CF /* FDD.png */; };
+		E69976EC3044F8FA00C90207 /* menu_str_sjis.txt in Resources */ = {isa = PBXBuildFile; fileRef = 07F864B2242F97BE00CBB224 /* menu_str_sjis.txt */; };
+		E69976ED3044F8FA00C90207 /* jSubstrate.png in Resources */ = {isa = PBXBuildFile; fileRef = 07869644243DBDF7007FCCEA /* jSubstrate.png */; };
+		E69976EE3044F8FA00C90207 /* ConfigScene.sks in Resources */ = {isa = PBXBuildFile; fileRef = 0758DC57243EFCE60097E86C /* ConfigScene.sks */; };
+		E69976EF3044F8FA00C90207 /* jStick@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = 07869641243DBDF7007FCCEA /* jStick@2x.png */; };
+		E69976F03044F8FA00C90207 /* jStick.png in Resources */ = {isa = PBXBuildFile; fileRef = 07869642243DBDF7007FCCEA /* jStick.png */; };
+		E69976F13044F8FA00C90207 /* HDDIcon.png in Resources */ = {isa = PBXBuildFile; fileRef = 0758DD5924401BA10097E86C /* HDDIcon.png */; };
+		E69976F23044F8FA00C90207 /* GameScene.sks in Resources */ = {isa = PBXBuildFile; fileRef = 073F76E42431F438005B1F18 /* GameScene.sks */; };
+		E69976F33044F8FA00C90207 /* jSubstrate@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = 07869643243DBDF7007FCCEA /* jSubstrate@2x.png */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -134,6 +207,7 @@
 
 /* Begin PBXFileReference section */
 		073F76E42431F438005B1F18 /* GameScene.sks */ = {isa = PBXFileReference; lastKnownFileType = file.sks; path = GameScene.sks; sourceTree = "<group>"; };
+		073F76E7243213C1005B1F18 /* X68000 for iOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "X68000 for iOS.entitlements"; sourceTree = "<group>"; };
 		073F76FB24323762005B1F18 /* c68k.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; name = c68k.xcodeproj; path = c68k/c68k.xcodeproj; sourceTree = "<group>"; };
 		0758DC57243EFCE60097E86C /* ConfigScene.sks */ = {isa = PBXFileReference; lastKnownFileType = file.sks; path = ConfigScene.sks; sourceTree = "<group>"; };
 		0758DC5D243EFD830097E86C /* ConfigScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfigScene.swift; sourceTree = "<group>"; };
@@ -225,9 +299,16 @@
 		07F863A2242F93E800CBB224 /* Actions.sks */ = {isa = PBXFileReference; lastKnownFileType = file.sks; path = Actions.sks; sourceTree = "<group>"; };
 		07F863A4242F93E800CBB224 /* GameScene.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = GameScene.swift; sourceTree = "<group>"; };
 		07F863A5242F93EA00CBB224 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		07F863AA242F93EA00CBB224 /* X68000 for iOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "X68000 for iOS.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		07F863AD242F93EA00CBB224 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		07F863AF242F93EA00CBB224 /* GameViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameViewController.swift; sourceTree = "<group>"; };
+		07F863B2242F93EA00CBB224 /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/Main.storyboard; sourceTree = "<group>"; };
+		07F863B5242F93EA00CBB224 /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
+		07F863B7242F93EA00CBB224 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		07F863BC242F93EA00CBB224 /* MPX68K.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MPX68K.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		07F863C3242F93EA00CBB224 /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/Main.storyboard; sourceTree = "<group>"; };
 		07F863C5242F93EA00CBB224 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		07F863D8242F944100CBB224 /* X68000 iOS-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "X68000 iOS-Bridging-Header.h"; sourceTree = "<group>"; };
 		07F86403242F94BB00CBB224 /* dosio.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = dosio.c; sourceTree = "<group>"; };
 		07F86404242F94BB00CBB224 /* peace.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = peace.c; sourceTree = "<group>"; };
 		07F86405242F94BB00CBB224 /* peace.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = peace.h; sourceTree = "<group>"; };
@@ -266,6 +347,7 @@
 		07F864B2242F97BE00CBB224 /* menu_str_sjis.txt */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = menu_str_sjis.txt; sourceTree = "<group>"; };
 		07F864B4242F97BE00CBB224 /* status.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = status.c; sourceTree = "<group>"; };
 		07F864B7242F97BE00CBB224 /* timer.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = timer.c; sourceTree = "<group>"; };
+		3DD3E149263EC1E8001A75F0 /* X68000 for iOSDebug.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "X68000 for iOSDebug.entitlements"; sourceTree = "<group>"; };
 		3DD3E14A263EC71A001A75F0 /* X68000Debug.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = X68000Debug.entitlements; sourceTree = "<group>"; };
 		535D07AC2E685DF900CF5265 /* ppi.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ppi.h; sourceTree = "<group>"; };
 		535D07AF2E685E0300CF5265 /* ppi.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = ppi.c; sourceTree = "<group>"; };
@@ -286,15 +368,6 @@
 		AC10FEED2508190000000003 /* crtc_timing.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = crtc_timing.h; sourceTree = "<group>"; };
 		AC10FEED2508190000000005 /* scrbuf.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = scrbuf.c; sourceTree = "<group>"; };
 		AC10FEED2508190000000006 /* scrbuf.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = scrbuf.h; sourceTree = "<group>"; };
-		073F76E7243213C1005B1F18 /* X68000 for iOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "X68000 for iOS.entitlements"; sourceTree = "<group>"; };
-		3DD3E149263EC1E8001A75F0 /* X68000 for iOSDebug.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "X68000 for iOSDebug.entitlements"; sourceTree = "<group>"; };
-		07F863AD242F93EA00CBB224 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
-		07F863AF242F93EA00CBB224 /* GameViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameViewController.swift; sourceTree = "<group>"; };
-		07F863B2242F93EA00CBB224 /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/Main.storyboard; sourceTree = "<group>"; };
-		07F863B5242F93EA00CBB224 /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
-		07F863B7242F93EA00CBB224 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
-		07F863AA242F93EA00CBB224 /* X68000 for iOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "X68000 for iOS.app"; sourceTree = BUILT_PRODUCTS_DIR; };
-		07F863D8242F944100CBB224 /* X68000 iOS-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "X68000 iOS-Bridging-Header.h"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -382,6 +455,20 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
+		07F863AC242F93EA00CBB224 /* X68000 iOS */ = {
+			isa = PBXGroup;
+			children = (
+				3DD3E149263EC1E8001A75F0 /* X68000 for iOSDebug.entitlements */,
+				073F76E7243213C1005B1F18 /* X68000 for iOS.entitlements */,
+				07F863AD242F93EA00CBB224 /* AppDelegate.swift */,
+				07F863AF242F93EA00CBB224 /* GameViewController.swift */,
+				07F863B1242F93EA00CBB224 /* Main.storyboard */,
+				07F863B4242F93EA00CBB224 /* LaunchScreen.storyboard */,
+				07F863B7242F93EA00CBB224 /* Info.plist */,
+			);
+			path = "X68000 iOS";
+			sourceTree = "<group>";
+		};
 		07F863BD242F93EA00CBB224 /* X68000 macOS */ = {
 			isa = PBXGroup;
 			children = (
@@ -395,20 +482,6 @@
 				07F863C5242F93EA00CBB224 /* Info.plist */,
 			);
 			path = "X68000 macOS";
-			sourceTree = "<group>";
-		};
-		07F863AC242F93EA00CBB224 /* X68000 iOS */ = {
-			isa = PBXGroup;
-			children = (
-				3DD3E149263EC1E8001A75F0 /* X68000 for iOSDebug.entitlements */,
-				073F76E7243213C1005B1F18 /* X68000 for iOS.entitlements */,
-				07F863AD242F93EA00CBB224 /* AppDelegate.swift */,
-				07F863AF242F93EA00CBB224 /* GameViewController.swift */,
-				07F863B1242F93EA00CBB224 /* Main.storyboard */,
-				07F863B4242F93EA00CBB224 /* LaunchScreen.storyboard */,
-				07F863B7242F93EA00CBB224 /* Info.plist */,
-			);
-			path = "X68000 iOS";
 			sourceTree = "<group>";
 		};
 		07F863D6242F940200CBB224 /* px68k */ = {
@@ -597,7 +670,6 @@
 			buildConfigurationList = 07F863D0242F93EA00CBB224 /* Build configuration list for PBXNativeTarget "X68000 iOS" */;
 			buildPhases = (
 				07F863A6242F93EA00CBB224 /* Sources */,
-				07F863A7242F93EA00CBB224 /* Frameworks */,
 				07F863A8242F93EA00CBB224 /* Resources */,
 			);
 			buildRules = (
@@ -720,17 +792,17 @@
 		07F863BA242F93EA00CBB224 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			files = (
-				0760DC282434F493004CA0CF /* FDD.png in Resources */,
-				07F864D5242F97BE00CBB224 /* menu_str_sjis.txt in Resources */,
-				0786964C243DBDF7007FCCEA /* jSubstrate.png in Resources */,
-				0758DC59243EFCE60097E86C /* ConfigScene.sks in Resources */,
-				07869646243DBDF7007FCCEA /* jStick@2x.png in Resources */,
-				07869648243DBDF7007FCCEA /* jStick.png in Resources */,
+				E69976EB3044F8FA00C90207 /* FDD.png in Resources */,
+				E69976EC3044F8FA00C90207 /* menu_str_sjis.txt in Resources */,
+				E69976ED3044F8FA00C90207 /* jSubstrate.png in Resources */,
+				E69976EE3044F8FA00C90207 /* ConfigScene.sks in Resources */,
+				E69976EF3044F8FA00C90207 /* jStick@2x.png in Resources */,
+				E69976F03044F8FA00C90207 /* jStick.png in Resources */,
 				07F863C4242F93EA00CBB224 /* Main.storyboard in Resources */,
-				0758DD5D24401BA20097E86C /* HDDIcon.png in Resources */,
+				E69976F13044F8FA00C90207 /* HDDIcon.png in Resources */,
 				07F863CD242F93EA00CBB224 /* Assets.xcassets in Resources */,
-				073F76E62431F438005B1F18 /* GameScene.sks in Resources */,
-				0786964A243DBDF7007FCCEA /* jSubstrate@2x.png in Resources */,
+				E69976F23044F8FA00C90207 /* GameScene.sks in Resources */,
+				E69976F33044F8FA00C90207 /* jSubstrate@2x.png in Resources */,
 				07F863C7242F93EA00CBB224 /* Actions.sks in Resources */,
 			);
 		};
@@ -814,89 +886,89 @@
 			isa = PBXSourcesBuildPhase;
 			files = (
 				535D07B42E685E2900CF5265 /* GameViewController.swift in Sources */,
-				07F4C7542430667D002CF5CA /* ioc.c in Sources */,
-				07F86410242F94BB00CBB224 /* fake.c in Sources */,
-				07F4C6C8243065F9002CF5CA /* m68000.c in Sources */,
-				07F864B9242F97BE00CBB224 /* joystick.c in Sources */,
-				07A528BD24389F5300AFD00D /* X68MouseController.swift in Sources */,
+				E69976AA3044F8FA00C90207 /* ioc.c in Sources */,
+				E69976AB3044F8FA00C90207 /* fake.c in Sources */,
+				E69976AC3044F8FA00C90207 /* m68000.c in Sources */,
+				E69976AD3044F8FA00C90207 /* joystick.c in Sources */,
+				E69976AE3044F8FA00C90207 /* X68MouseController.swift in Sources */,
 				07F863CB242F93EA00CBB224 /* GameScene.swift in Sources */,
-				07F4C72A2430667D002CF5CA /* irqh.c in Sources */,
-				07E6EF332430CCAE0034E485 /* CGROM_DAT.c in Sources */,
-				07F4C7522430667D002CF5CA /* rtc.c in Sources */,
-				53A8611A2E4375CA0056E4DE /* X68Logger.swift in Sources */,
-				53A8611B2E4375CA0056E4DE /* X68ErrorHandling.swift in Sources */,
-				53A8611C2E4375CA0056E4DE /* X68Security.swift in Sources */,
-				07F4C7482430667D002CF5CA /* sram.c in Sources */,
-				07869627243D9A91007FCCEA /* X68JoyCard.swift in Sources */,
-				07F864CF242F97BE00CBB224 /* prop.c in Sources */,
-				07F4C7322430667D002CF5CA /* scsi.c in Sources */,
-				07F4C73E2430667D002CF5CA /* pia.c in Sources */,
-				07F4C7502430667D002CF5CA /* gvram.c in Sources */,
-				07F4C7282430667D002CF5CA /* crtc.c in Sources */,
-				AC10FEED2508190000000001 /* crtc_timing.c in Sources */,
-				07869626243D9A8E007FCCEA /* X68Device.swift in Sources */,
-				07F4C7242430667D002CF5CA /* sasi.c in Sources */,
-				0758DC5F243EFD830097E86C /* ConfigScene.swift in Sources */,
-				07F4C7222430667D002CF5CA /* fdc.c in Sources */,
-				07F4C6DD2430664B002CF5CA /* fmg_wrap.cpp in Sources */,
-				07F864CD242F97BE00CBB224 /* mouse.c in Sources */,
-				07F4C73C2430667D002CF5CA /* dmac.c in Sources */,
-				07F4C7342430667D002CF5CA /* disk_d88.c in Sources */,
-				07F4C6E12430664B002CF5CA /* opm.cpp in Sources */,
-				0764421B243328C3006E5208 /* FileSystem.swift in Sources */,
-				07F4C7262430667D002CF5CA /* midi.c in Sources */,
-				07F4C7422430667D002CF5CA /* mfp.c in Sources */,
+				E69976AF3044F8FA00C90207 /* irqh.c in Sources */,
+				E69976B03044F8FA00C90207 /* CGROM_DAT.c in Sources */,
+				E69976B13044F8FA00C90207 /* rtc.c in Sources */,
+				E69976B23044F8FA00C90207 /* X68Logger.swift in Sources */,
+				E69976B33044F8FA00C90207 /* X68ErrorHandling.swift in Sources */,
+				E69976B43044F8FA00C90207 /* X68Security.swift in Sources */,
+				E69976B53044F8FA00C90207 /* sram.c in Sources */,
+				E69976B63044F8FA00C90207 /* X68JoyCard.swift in Sources */,
+				E69976B73044F8FA00C90207 /* prop.c in Sources */,
+				E69976B83044F8FA00C90207 /* scsi.c in Sources */,
+				E69976B93044F8FA00C90207 /* pia.c in Sources */,
+				E69976BA3044F8FA00C90207 /* gvram.c in Sources */,
+				E69976BB3044F8FA00C90207 /* crtc.c in Sources */,
+				E69976BC3044F8FA00C90207 /* crtc_timing.c in Sources */,
+				E69976BD3044F8FA00C90207 /* X68Device.swift in Sources */,
+				E69976BE3044F8FA00C90207 /* sasi.c in Sources */,
+				E69976BF3044F8FA00C90207 /* ConfigScene.swift in Sources */,
+				E69976C03044F8FA00C90207 /* fdc.c in Sources */,
+				E69976C13044F8FA00C90207 /* fmg_wrap.cpp in Sources */,
+				E69976C23044F8FA00C90207 /* mouse.c in Sources */,
+				E69976C33044F8FA00C90207 /* dmac.c in Sources */,
+				E69976C43044F8FA00C90207 /* disk_d88.c in Sources */,
+				E69976C53044F8FA00C90207 /* opm.cpp in Sources */,
+				E69976C63044F8FA00C90207 /* FileSystem.swift in Sources */,
+				E69976C73044F8FA00C90207 /* midi.c in Sources */,
+				E69976C83044F8FA00C90207 /* mfp.c in Sources */,
 				535D07B22E685E1D00CF5265 /* AppDelegate.swift in Sources */,
 				AA000001300000000000AA01 /* MonitorView.swift in Sources */,
 				AA000003300000000000AA01 /* MonitorWindowController.swift in Sources */,
-				07F4C7592430A73C002CF5CA /* AudioStream.swift in Sources */,
-				07F4C7462430667D002CF5CA /* bg.c in Sources */,
-				07F4C7442430667D002CF5CA /* sysport.c in Sources */,
-				07F4C6E72430664B002CF5CA /* fmgen.cpp in Sources */,
-				07F4C72C2430667D002CF5CA /* d68k.c in Sources */,
-				07F864DB242F97BE00CBB224 /* timer.c in Sources */,
-				07F864C5242F97BE00CBB224 /* dswin.c in Sources */,
-				07F4C7362430667D002CF5CA /* mem_wrap.c in Sources */,
-				07F864D9242F97BE00CBB224 /* status.c in Sources */,
-				07F4C74C2430667D002CF5CA /* disk_dim.c in Sources */,
-				0786963E243DBB73007FCCEA /* TAAnalogJoyStick.swift in Sources */,
-				07F4C7402430667D002CF5CA /* fdd.c in Sources */,
-				535D07B02E685E0300CF5265 /* ppi.c in Sources */,
-				07B71D7D243A350500953E25 /* MIDIController.swift in Sources */,
-				07F8640E242F94BB00CBB224 /* peace.c in Sources */,
-				07F4C74A2430667D002CF5CA /* scc.c in Sources */,
-				0760DC2B24350DDC004CA0CF /* BenchMark.swift in Sources */,
-				07F8640C242F94BB00CBB224 /* dosio.c in Sources */,
-				07F4C73A2430667D002CF5CA /* tvram.c in Sources */,
-				0771C5A22431B129002D40F0 /* JoyController.swift in Sources */,
-				07F4C6DF2430664B002CF5CA /* fmtimer.cpp in Sources */,
-				07F4C7562430667D002CF5CA /* disk_xdf.c in Sources */,
-				07F864BD242F97BE00CBB224 /* windraw.c in Sources */,
-				AC10FEED2508190000000004 /* scrbuf.c in Sources */,
-				07F864D3242F97BE00CBB224 /* common.c in Sources */,
-				07F4C72E2430667D002CF5CA /* adpcm.c in Sources */,
-				07F4C7382430667D002CF5CA /* palette.c in Sources */,
-				07F864C3242F97BE00CBB224 /* keyboard.c in Sources */,
-				07F864BF242F97BE00CBB224 /* winx68k.cpp in Sources */,
-				07E6EF302430CC1B0034E485 /* IPLROM_DAT.c in Sources */,
-				53C0A1002E50000000AAA001 /* CRT/CRTSettings.swift in Sources */,
-				53C0A1022E50000000AAA001 /* CRT/CRTFilterManager.swift in Sources */,
-				53C0A1062E50050000AAA001 /* SuperimposeManager.swift in Sources */,
-				53C0A1042E50010000AAA001 /* CRT/CRTOverlay.swift in Sources */,
+				E69976C93044F8FA00C90207 /* AudioStream.swift in Sources */,
+				E69976CA3044F8FA00C90207 /* bg.c in Sources */,
+				E69976CB3044F8FA00C90207 /* sysport.c in Sources */,
+				E69976CC3044F8FA00C90207 /* fmgen.cpp in Sources */,
+				E69976CD3044F8FA00C90207 /* d68k.c in Sources */,
+				E69976CE3044F8FA00C90207 /* timer.c in Sources */,
+				E69976CF3044F8FA00C90207 /* dswin.c in Sources */,
+				E69976D03044F8FA00C90207 /* mem_wrap.c in Sources */,
+				E69976D13044F8FA00C90207 /* status.c in Sources */,
+				E69976D23044F8FA00C90207 /* disk_dim.c in Sources */,
+				E69976D33044F8FA00C90207 /* TAAnalogJoyStick.swift in Sources */,
+				E69976D43044F8FA00C90207 /* fdd.c in Sources */,
+				E69976D53044F8FA00C90207 /* ppi.c in Sources */,
+				E69976D63044F8FA00C90207 /* MIDIController.swift in Sources */,
+				E69976D73044F8FA00C90207 /* peace.c in Sources */,
+				E69976D83044F8FA00C90207 /* scc.c in Sources */,
+				E69976D93044F8FA00C90207 /* BenchMark.swift in Sources */,
+				E69976DA3044F8FA00C90207 /* dosio.c in Sources */,
+				E69976DB3044F8FA00C90207 /* tvram.c in Sources */,
+				E69976DC3044F8FA00C90207 /* JoyController.swift in Sources */,
+				E69976DD3044F8FA00C90207 /* fmtimer.cpp in Sources */,
+				E69976DE3044F8FA00C90207 /* disk_xdf.c in Sources */,
+				E69976DF3044F8FA00C90207 /* windraw.c in Sources */,
+				E69976E03044F8FA00C90207 /* scrbuf.c in Sources */,
+				E69976E13044F8FA00C90207 /* common.c in Sources */,
+				E69976E23044F8FA00C90207 /* adpcm.c in Sources */,
+				E69976E33044F8FA00C90207 /* palette.c in Sources */,
+				E69976E43044F8FA00C90207 /* keyboard.c in Sources */,
+				E69976E53044F8FA00C90207 /* winx68k.cpp in Sources */,
+				E69976E63044F8FA00C90207 /* IPLROM_DAT.c in Sources */,
+				E69976E73044F8FA00C90207 /* CRT/CRTSettings.swift in Sources */,
+				E69976E83044F8FA00C90207 /* CRT/CRTFilterManager.swift in Sources */,
+				E69976E93044F8FA00C90207 /* SuperimposeManager.swift in Sources */,
+				E69976EA3044F8FA00C90207 /* CRT/CRTOverlay.swift in Sources */,
 			);
 		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
-		53685FBE2F2B8F1E00A86652 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			name = c68k;
-			targetProxy = 53685FBD2F2B8F1E00A86652 /* PBXContainerItemProxy */;
-		};
 		53685FBC2F2B8F1E00A86652 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			name = c68k_mac;
 			targetProxy = 53685FBB2F2B8F1E00A86652 /* PBXContainerItemProxy */;
+		};
+		53685FBE2F2B8F1E00A86652 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = c68k;
+			targetProxy = 53685FBD2F2B8F1E00A86652 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -1085,7 +1157,7 @@
 				);
 				MARKETING_VERSION = 4.3;
 				OTHER_LDFLAGS = "-lc68k";
-				PRODUCT_BUNDLE_IDENTIFIER = NANKIN.X68000;
+				PRODUCT_BUNDLE_IDENTIFIER = "tokyo.studio-r.px68k";
 				PRODUCT_MODULE_NAME = X68000;
 				PRODUCT_NAME = "X68000 for iOS";
 				SDKROOT = iphoneos;
@@ -1130,7 +1202,7 @@
 				);
 				MARKETING_VERSION = 4.3;
 				OTHER_LDFLAGS = "-lc68k";
-				PRODUCT_BUNDLE_IDENTIFIER = NANKIN.X68000;
+				PRODUCT_BUNDLE_IDENTIFIER = "tokyo.studio-r.px68k";
 				PRODUCT_MODULE_NAME = X68000;
 				PRODUCT_NAME = "X68000 for iOS";
 				SDKROOT = iphoneos;
@@ -1189,7 +1261,7 @@
 				MARKETING_VERSION = 4.3;
 				OTHER_CFLAGS = "";
 				OTHER_LDFLAGS = "-lc68k_mac_DEBUG";
-				PRODUCT_BUNDLE_IDENTIFIER = NANKIN.X68000;
+				PRODUCT_BUNDLE_IDENTIFIER = "tokyo.studio-r.px68k";
 				PRODUCT_MODULE_NAME = X68000;
 				PRODUCT_NAME = MPX68K;
 				SDKROOT = macosx;
@@ -1243,7 +1315,7 @@
 				MARKETING_VERSION = 4.3;
 				OTHER_CFLAGS = "";
 				OTHER_LDFLAGS = "-lc68k_mac";
-				PRODUCT_BUNDLE_IDENTIFIER = NANKIN.X68000;
+				PRODUCT_BUNDLE_IDENTIFIER = "tokyo.studio-r.px68k";
 				PRODUCT_MODULE_NAME = X68000;
 				PRODUCT_NAME = MPX68K;
 				PROVISIONING_PROFILE_SPECIFIER = "";
