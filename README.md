@@ -175,29 +175,28 @@ submits the DMG to Apple's Notary Service, staples and verifies it, then
 creates a GitHub Release with the DMG attached. The default tag is
 `v<MARKETING_VERSION>.<CURRENT_PROJECT_VERSION>` (for example, `v4.3.937`).
 
-Before the first release, authenticate GitHub CLI and register an Apple
-Notary Service Keychain profile. Keep signing credentials outside the
-repository:
+初回だけ、GitHub CLIの認証とApple Notary Service用Keychainプロファイルの
+登録が必要です。秘密鍵やパスワードはリポジトリに保存しません。
 
 ```sh
 gh auth login
-xcrun notarytool store-credentials MPX68KNotary \
+xcrun notarytool store-credentials Notalization2021 \
   --key "/path/to/AuthKey_XXXXXXXXXX.p8" \
   --key-id "XXXXXXXXXX" \
   --issuer "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-cp scripts/macos/config.env.example scripts/macos/config.env
 ```
 
-Edit `scripts/macos/config.env` for the local signing identity, Team ID,
-notary profile, release remote, and GitHub repository. Then run the script;
-use `--draft` for the first release:
+通常のリリース実行は一行です。初回確認などでDraftにする場合だけ
+`--draft`を付けます。
 
 ```sh
-./scripts/macos/package-release.sh --notary-profile MPX68KNotary --draft
+./scripts/macos/package-release.sh
 ```
 
-The script publishes to the configured release remote (the checked-in example
-uses the `fork` remote) and does not include ROMs or other copyrighted assets.
+設定を変更したい場合だけ、`scripts/macos/config.env.example`を
+`scripts/macos/config.env`へコピーして編集します。スクリプトは設定例の
+`fork`リモートへタグをpushし、GitHub Releaseを作成します。ROMなどの
+著作権対象アセットは含めません。
 
 ## Usage
 
