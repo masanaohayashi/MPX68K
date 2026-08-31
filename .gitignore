@@ -104,6 +104,10 @@ zsrc/
 # Ad-hoc build logs
 build_x86.log
 
+# macOS release artifacts and local signing/notary configuration
+dist/
+scripts/macos/config.env
+
 # WIP backups from earlier debug sessions
 _wip_save_*/
 _wip_save_*.tar.gz

@@ -166,6 +166,39 @@ The project includes the c68k CPU emulator and the ymfm YM2151 core. c68k is
 built automatically by each Xcode application target; ymfm is pinned as the
 `third_party/ymfm` git submodule and must be initialized before building.
 
+### macOS Release
+
+`scripts/macos/package-release.sh` builds the macOS target only. It verifies a
+clean, already-pushed commit, initializes the ymfm submodule, builds the
+Universal c68k dependency, creates a signed `MPX68K.app` archive and DMG,
+submits the DMG to Apple's Notary Service, staples and verifies it, then
+creates a GitHub Release with the DMG attached. The default tag is
+`v<MARKETING_VERSION>.<CURRENT_PROJECT_VERSION>` (for example, `v4.3.937`).
+
+Before the first release, authenticate GitHub CLI and register an Apple
+Notary Service Keychain profile. Keep signing credentials outside the
+repository:
+
+```sh
+gh auth login
+xcrun notarytool store-credentials MPX68KNotary \
+  --key "/path/to/AuthKey_XXXXXXXXXX.p8" \
+  --key-id "XXXXXXXXXX" \
+  --issuer "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+cp scripts/macos/config.env.example scripts/macos/config.env
+```
+
+Edit `scripts/macos/config.env` for the local signing identity, Team ID,
+notary profile, release remote, and GitHub repository. Then run the script;
+use `--draft` for the first release:
+
+```sh
+./scripts/macos/package-release.sh --notary-profile MPX68KNotary --draft
+```
+
+The script publishes to the configured release remote (the checked-in example
+uses the `fork` remote) and does not include ROMs or other copyrighted assets.
+
 ## Usage
 
 ### macOS Menu Reference
